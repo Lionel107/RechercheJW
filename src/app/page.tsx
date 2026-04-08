@@ -482,9 +482,64 @@ export default function Home() {
   );
 }
 
+const BIBLE_BOOKS: Record<string, number> = {
+  "genèse": 1, "exode": 2, "lévitique": 3, "nombres": 4, "deutéronome": 5,
+  "josué": 6, "juges": 7, "ruth": 8, "1 samuel": 9, "2 samuel": 10,
+  "1 rois": 11, "2 rois": 12, "1 chroniques": 13, "2 chroniques": 14,
+  "esdras": 15, "néhémie": 16, "esther": 17, "job": 18, "psaumes": 19, "psaume": 19,
+  "proverbes": 20, "ecclésiaste": 21, "cantique des cantiques": 22,
+  "isaïe": 23, "ésaïe": 23, "jérémie": 24, "lamentations": 25, "ézéchiel": 26, "daniel": 27,
+  "osée": 28, "joël": 29, "amos": 30, "abdias": 31, "jonas": 32, "michée": 33,
+  "nahoum": 34, "habacuc": 35, "sophonie": 36, "aggée": 37, "zacharie": 38, "malachie": 39,
+  "matthieu": 40, "marc": 41, "luc": 42, "jean": 43,
+  "actes": 44, "romains": 45,
+  "1 corinthiens": 46, "2 corinthiens": 47,
+  "galates": 48, "éphésiens": 49, "philippiens": 50, "colossiens": 51,
+  "1 thessaloniciens": 52, "2 thessaloniciens": 53,
+  "1 timothée": 54, "2 timothée": 55, "tite": 56, "philémon": 57,
+  "hébreux": 58, "jacques": 59,
+  "1 pierre": 60, "2 pierre": 61,
+  "1 jean": 62, "2 jean": 63, "3 jean": 64,
+  "jude": 65, "révélation": 66, "apocalypse": 66,
+};
+
+function buildVerseUrl(reference: string): string | null {
+  const match = reference.match(/^(.+?)\s+(\d+):(\d+)(?:-(\d+))?$/);
+  if (!match) return null;
+
+  const bookName = match[1].toLowerCase().trim();
+  const chapter = match[2];
+  const verseStart = match[3];
+  const bookNum = BIBLE_BOOKS[bookName];
+
+  if (!bookNum) return null;
+
+  return `https://wol.jw.org/fr/wol/b/r30/lp-f/nwtsty/${bookNum}/${chapter}#v${bookNum}:${chapter}:${verseStart}`;
+}
+
 function renderTextWithVerses(text: string) {
-  const parts = text.split(/(\[[^\]]+\]\(https?:\/\/[^)]+\))/g);
+  // Match {{Verse Reference}} and [text](url) markdown links
+  const parts = text.split(/(\{\{[^}]+\}\}|\[[^\]]+\]\(https?:\/\/[^)]+\))/g);
   return parts.map((part, i) => {
+    // Handle {{Verse}} format
+    const verseMatch = part.match(/^\{\{(.+?)\}\}$/);
+    if (verseMatch) {
+      const ref = verseMatch[1];
+      const url = buildVerseUrl(ref);
+      return (
+        <a
+          key={i}
+          href={url || `https://wol.jw.org/fr/wol/s/r30/lp-f?q=${encodeURIComponent(ref)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-[#3b3260] font-medium underline decoration-purple-300 underline-offset-2 hover:decoration-[#3b3260] transition-colors"
+        >
+          {ref}
+        </a>
+      );
+    }
+
+    // Handle [text](url) markdown links
     const linkMatch = part.match(/\[(.+?)\]\((https?:\/\/[^)]+)\)/);
     if (linkMatch) {
       return (
@@ -586,9 +641,38 @@ function AssistantMessage({
                       </a>
                     );
                   }
+                  // Handle raw URLs without markdown format
+                  const rawUrl = link.replace(/^[-*]\s*/, "").trim();
+                  const urlMatch = rawUrl.match(/(https?:\/\/[^\s]+)/);
+                  if (urlMatch) {
+                    return (
+                      <a
+                        key={j}
+                        href={urlMatch[1]}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2.5 text-sm text-gray-500 hover:text-[#3b3260] transition-colors truncate"
+                      >
+                        <svg
+                          className="w-3.5 h-3.5 shrink-0"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                          />
+                        </svg>
+                        {rawUrl}
+                      </a>
+                    );
+                  }
                   return (
                     <p key={j} className="text-sm text-gray-400">
-                      {link.replace(/^[-*]\s*/, "")}
+                      {rawUrl}
                     </p>
                   );
                 })}
