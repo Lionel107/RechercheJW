@@ -40,9 +40,12 @@ export default function Home() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [scrollDir, setScrollDir] = useState<"up" | "down">("down");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const lastScrollY = useRef(0);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const loaded = loadConversations();
@@ -52,6 +55,22 @@ export default function Home() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    function handleScroll() {
+      const currentY = container!.scrollTop;
+      if (currentY > lastScrollY.current + 5) {
+        setScrollDir("down");
+      } else if (currentY < lastScrollY.current - 5) {
+        setScrollDir("up");
+      }
+      lastScrollY.current = currentY;
+    }
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -381,7 +400,7 @@ export default function Home() {
       {/* Main chat area */}
       <div className="flex flex-col flex-1 min-w-0">
         {/* Header */}
-        <header className="bg-white border-b border-gray-100 px-5 py-4 flex items-center gap-4 shrink-0">
+        <header className={`bg-white border-b border-gray-100 px-5 py-4 flex items-center gap-4 shrink-0 transition-all duration-300 md:translate-y-0 ${scrollDir === "up" ? "-translate-y-full max-md:h-0 max-md:py-0 max-md:overflow-hidden" : "translate-y-0"}`}>
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="md:hidden p-1.5 rounded-lg hover:bg-gray-50"
@@ -426,7 +445,7 @@ export default function Home() {
         </header>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-4 py-8">
+        <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-8">
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <div className="w-20 h-20 bg-[#3b3260] rounded-2xl flex items-center justify-center mb-6">
@@ -507,7 +526,7 @@ export default function Home() {
         </div>
 
         {/* Input */}
-        <div className="border-t border-gray-100 bg-white px-5 py-4 shrink-0">
+        <div className={`border-t border-gray-100 bg-white px-5 py-4 shrink-0 transition-all duration-300 md:translate-y-0 ${scrollDir === "down" ? "translate-y-full max-md:h-0 max-md:py-0 max-md:overflow-hidden" : "translate-y-0"}`}>
           <form
             onSubmit={handleSubmit}
             className="max-w-3xl mx-auto"

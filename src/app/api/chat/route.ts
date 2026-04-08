@@ -101,10 +101,22 @@ export async function POST(req: NextRequest) {
       /^(bonjour|salut|hello|hi|hey|coucou|bonsoir|merci|au revoir|bye|ok|oui|non|d'accord|ça va|comment vas-tu|qui es-tu|comment tu t'appelles)[\s?!.,]*$/i;
     const isCasual = casualPatterns.test(message.trim());
 
-    // Only search Brave for substantive questions
+    // Launch Brave search in parallel (don't await yet) for non-casual messages
+    const searchPromise = isCasual ? null : searchBrave(message);
+
+    // Build conversation history for Gemini (limited to last 10 messages)
+    const recentHistory = (history ?? []).slice(-10);
+    const chatHistory = recentHistory.map(
+      (msg: { role: string; content: string }) => ({
+        role: msg.role === "assistant" ? "model" : "user",
+        parts: [{ text: msg.content }],
+      })
+    );
+
+    // Await Brave results only when needed
     let searchContext = "";
-    if (!isCasual) {
-      const searchResults = await searchBrave(message);
+    if (searchPromise) {
+      const searchResults = await searchPromise;
       searchContext =
         searchResults.length > 0
           ? "\n\nRésultats de recherche sur jw.org et wol.jw.org :\n" +
@@ -116,14 +128,6 @@ export async function POST(req: NextRequest) {
               .join("\n\n")
           : "\n\nAucun résultat pertinent trouvé sur jw.org ou wol.jw.org. Réponds avec tes connaissances générales si possible.";
     }
-
-    // Build conversation history for Gemini
-    const chatHistory = (history ?? []).map(
-      (msg: { role: string; content: string }) => ({
-        role: msg.role === "assistant" ? "model" : "user",
-        parts: [{ text: msg.content }],
-      })
-    );
 
     const userText = isCasual ? message : `${message}${searchContext}`;
 
