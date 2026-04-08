@@ -37,8 +37,12 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const loaded = loadConversations();
@@ -95,6 +99,34 @@ export default function Home() {
     setSidebarOpen(false);
   }
 
+  function startRenaming(id: string, title: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    setEditingId(id);
+    setEditingTitle(title);
+  }
+
+  function saveRename(id: string) {
+    if (editingTitle.trim()) {
+      const updated = conversations.map((c) =>
+        c.id === id ? { ...c, title: editingTitle.trim() } : c
+      );
+      setConversations(updated);
+      saveConversations(updated);
+    }
+    setEditingId(null);
+  }
+
+  function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setSelectedImage(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  }
+
   function deleteConversation(id: string, e: React.MouseEvent) {
     e.stopPropagation();
     const updated = conversations.filter((c) => c.id !== id);
@@ -132,6 +164,7 @@ export default function Home() {
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
     setInput("");
+    setSelectedImage(null);
     setIsLoading(true);
 
     try {
@@ -141,6 +174,7 @@ export default function Home() {
         body: JSON.stringify({
           message: trimmed,
           history: messages,
+          image: selectedImage || undefined,
         }),
       });
 
@@ -274,26 +308,63 @@ export default function Home() {
                       d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
                     />
                   </svg>
-                  <span className="truncate flex-1">{conv.title}</span>
-                  <button
-                    onClick={(e) => deleteConversation(conv.id, e)}
-                    className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400 transition-all"
-                    title="Supprimer"
-                  >
-                    <svg
-                      className="w-3.5 h-3.5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
+                  {editingId === conv.id ? (
+                    <input
+                      type="text"
+                      value={editingTitle}
+                      onChange={(e) => setEditingTitle(e.target.value)}
+                      onBlur={() => saveRename(conv.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") saveRename(conv.id);
+                        if (e.key === "Escape") setEditingId(null);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      autoFocus
+                      className="flex-1 bg-white/20 text-white text-sm rounded px-1.5 py-0.5 outline-none min-w-0"
+                    />
+                  ) : (
+                    <span className="truncate flex-1">{conv.title}</span>
+                  )}
+                  <div className="flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all">
+                    <button
+                      onClick={(e) => startRenaming(conv.id, conv.title, e)}
+                      className="p-1 hover:text-white transition-all"
+                      title="Renommer"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                      />
-                    </svg>
-                  </button>
+                      <svg
+                        className="w-3.5 h-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                        />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={(e) => deleteConversation(conv.id, e)}
+                      className="p-1 hover:text-red-400 transition-all"
+                      title="Supprimer"
+                    >
+                      <svg
+                        className="w-3.5 h-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                        />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -439,42 +510,88 @@ export default function Home() {
         <div className="border-t border-gray-100 bg-white px-5 py-4 shrink-0">
           <form
             onSubmit={handleSubmit}
-            className="max-w-3xl mx-auto flex gap-3 items-end"
+            className="max-w-3xl mx-auto"
           >
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSubmit(e);
-                }
-              }}
-              placeholder="Posez votre question..."
-              rows={1}
-              className="flex-1 resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-[#3b3260] placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#3b3260]/20 focus:border-[#3b3260]/30 focus:bg-white transition-all"
-              disabled={isLoading}
-            />
-            <button
-              type="submit"
-              disabled={isLoading || !input.trim()}
-              className="bg-[#3b3260] text-white rounded-xl px-4 py-3 font-medium hover:bg-[#4a4170] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+            {selectedImage && (
+              <div className="mb-2 relative inline-block">
+                <img
+                  src={selectedImage}
+                  alt="Image jointe"
+                  className="h-20 rounded-lg border border-gray-200"
                 />
-              </svg>
-            </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedImage(null)}
+                  className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600"
+                >
+                  x
+                </button>
+              </div>
+            )}
+            <div className="flex gap-3 items-end">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageSelect}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="p-3 rounded-xl border border-gray-200 bg-gray-50 text-gray-400 hover:text-[#3b3260] hover:border-[#3b3260]/30 transition-all"
+                disabled={isLoading}
+                title="Ajouter une image"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                  />
+                </svg>
+              </button>
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSubmit(e);
+                  }
+                }}
+                placeholder="Posez votre question..."
+                rows={1}
+                className="flex-1 resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-[#3b3260] placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#3b3260]/20 focus:border-[#3b3260]/30 focus:bg-white transition-all"
+                disabled={isLoading}
+              />
+              <button
+                type="submit"
+                disabled={isLoading || (!input.trim() && !selectedImage)}
+                className="bg-[#3b3260] text-white rounded-xl px-4 py-3 font-medium hover:bg-[#4a4170] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                  />
+                </svg>
+              </button>
+            </div>
           </form>
         </div>
       </div>

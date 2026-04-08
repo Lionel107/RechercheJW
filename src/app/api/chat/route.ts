@@ -90,7 +90,7 @@ async function searchBrave(query: string): Promise<BraveResult[]> {
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, history } = await req.json();
+    const { message, history, image } = await req.json();
 
     if (!message || typeof message !== "string") {
       return NextResponse.json({ error: "Message requis" }, { status: 400 });
@@ -125,9 +125,17 @@ export async function POST(req: NextRequest) {
       })
     );
 
-    const userMessage = isCasual
-      ? message
-      : `${message}${searchContext}`;
+    const userText = isCasual ? message : `${message}${searchContext}`;
+
+    // Build message parts (text + optional image)
+    const userParts: (string | { inlineData: { mimeType: string; data: string } })[] = [];
+    if (image && typeof image === "string") {
+      const match = image.match(/^data:(.+?);base64,(.+)$/);
+      if (match) {
+        userParts.push({ inlineData: { mimeType: match[1], data: match[2] } });
+      }
+    }
+    userParts.push(userText);
 
     // Try models in order until one works
     const models = [
@@ -148,7 +156,7 @@ export async function POST(req: NextRequest) {
         });
 
         const chat = model.startChat({ history: chatHistory });
-        const result = await chat.sendMessageStream(userMessage);
+        const result = await chat.sendMessageStream(userParts);
 
         // Stream the response
         const encoder = new TextEncoder();
@@ -186,8 +194,8 @@ export async function POST(req: NextRequest) {
       } catch (error: unknown) {
         lastError = error;
         const status = (error as { status?: number }).status;
-        // Only fallback on quota/rate limit/unavailable errors
-        if (status === 429 || status === 503) {
+        // Fallback on quota/rate limit/unavailable/invalid errors
+        if (status === 429 || status === 503 || status === 400) {
           console.log(`${modelName} unavailable (${status}), trying next...`);
           continue;
         }
