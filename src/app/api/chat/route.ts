@@ -125,52 +125,79 @@ export async function POST(req: NextRequest) {
       })
     );
 
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
-      systemInstruction: SYSTEM_PROMPT,
-    });
-
-    const chat = model.startChat({ history: chatHistory });
-
     const userMessage = isCasual
       ? message
       : `${message}${searchContext}`;
 
-    const result = await chat.sendMessageStream(userMessage);
+    // Try models in order until one works
+    const models = [
+      "gemini-2.5-flash",
+      "gemini-3-flash-preview",
+      "gemini-3.1-flash-lite-preview",
+      "gemini-2.5-flash-lite",
+      "gemini-2.0-flash-lite",
+    ];
 
-    // Stream the response
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          for await (const chunk of result.stream) {
-            const text = chunk.text();
-            if (text) {
+    let lastError: unknown = null;
+
+    for (const modelName of models) {
+      try {
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          systemInstruction: SYSTEM_PROMPT,
+        });
+
+        const chat = model.startChat({ history: chatHistory });
+        const result = await chat.sendMessageStream(userMessage);
+
+        // Stream the response
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+          async start(controller) {
+            try {
+              for await (const chunk of result.stream) {
+                const text = chunk.text();
+                if (text) {
+                  controller.enqueue(
+                    encoder.encode(`data: ${JSON.stringify({ text })}\n\n`)
+                  );
+                }
+              }
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+              controller.close();
+            } catch (error) {
               controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ text })}\n\n`)
+                encoder.encode(
+                  `data: ${JSON.stringify({ error: "Erreur lors de la génération" })}\n\n`
+                )
               );
+              controller.close();
             }
-          }
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-          controller.close();
-        } catch (error) {
-          controller.enqueue(
-            encoder.encode(
-              `data: ${JSON.stringify({ error: "Erreur lors de la génération" })}\n\n`
-            )
-          );
-          controller.close();
-        }
-      },
-    });
+          },
+        });
 
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-      },
-    });
+        return new Response(stream, {
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            Connection: "keep-alive",
+          },
+        });
+      } catch (error: unknown) {
+        lastError = error;
+        const status = (error as { status?: number }).status;
+        // Only fallback on quota/rate limit/unavailable errors
+        if (status === 429 || status === 503) {
+          console.log(`${modelName} unavailable (${status}), trying next...`);
+          continue;
+        }
+        // For other errors, don't try other models
+        throw error;
+      }
+    }
+
+    // All models failed
+    throw lastError;
   } catch (error) {
     console.error("API Error:", error);
     return NextResponse.json(
