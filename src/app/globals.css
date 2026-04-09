@@ -39,3 +39,15 @@ textarea {
 ::-webkit-scrollbar-thumb:hover {
   background: #b0aac6;
 }
+
+/* Animation livre ouverture/fermeture */
+@keyframes book {
+  0%, 100% {
+    transform: scaleX(1);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scaleX(0.7);
+    opacity: 1;
+  }
+}
