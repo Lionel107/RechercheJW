@@ -654,9 +654,37 @@ function buildVerseUrl(reference: string): string | null {
 }
 
 function renderTextWithVerses(text: string) {
-  // Match {{Verse Reference}} and [text](url) markdown links
-  const parts = text.split(/(\{\{[^}]+\}\}|\[[^\]]+\]\(https?:\/\/[^)]+\))/g);
+  // Split by inline sources <<source: [Title](URL)>>, {{Verse}}, and [text](url)
+  const parts = text.split(/(<<source:.*?>>|\{\{[^}]+\}\}|\[[^\]]+\]\(https?:\/\/[^)]+\))/g);
   return parts.map((part, i) => {
+    // Handle <<source: [Title](URL)>> inline sources
+    const sourceMatch = part.match(/^<<source:\s*(.+?)>>$/);
+    if (sourceMatch) {
+      const sourceContent = sourceMatch[1];
+      const links = [...sourceContent.matchAll(/\[(.+?)\]\((https?:\/\/[^)]+)\)/g)];
+      if (links.length > 0) {
+        return (
+          <span key={i} className="inline-flex flex-wrap items-center gap-1 ml-1">
+            {links.map((link, j) => (
+              <a
+                key={j}
+                href={link[2]}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[10px] bg-[#3b3260]/8 text-[#3b3260] px-2 py-0.5 rounded-full hover:bg-[#3b3260]/15 transition-colors"
+              >
+                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                {link[1]}
+              </a>
+            ))}
+          </span>
+        );
+      }
+      return null;
+    }
+
     // Handle {{Verse}} format
     const verseMatch = part.match(/^\{\{(.+?)\}\}$/);
     if (verseMatch) {
@@ -744,8 +772,11 @@ function AssistantMessage({
         if (title === "Sources") {
           const links = body.split("\n").filter((l) => l.trim());
           return (
-            <div key={i} className="pt-2 border-t border-gray-100">
-              <h3 className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.15em] mb-3">
+            <div key={i} className="mt-3 bg-[#3b3260]/5 rounded-xl p-4 border border-[#3b3260]/10">
+              <h3 className="flex items-center gap-2 text-[11px] font-semibold text-[#3b3260] uppercase tracking-[0.15em] mb-3">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
                 {title}
               </h3>
               <div className="space-y-2">
@@ -758,10 +789,10 @@ function AssistantMessage({
                         href={match[2]}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-2.5 text-sm text-gray-500 hover:text-[#3b3260] transition-colors truncate"
+                        className="flex items-center gap-2.5 text-sm text-[#3b3260]/70 hover:text-[#3b3260] transition-colors group"
                       >
                         <svg
-                          className="w-3.5 h-3.5 shrink-0"
+                          className="w-4 h-4 shrink-0 opacity-40 group-hover:opacity-100 transition-opacity"
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -773,11 +804,10 @@ function AssistantMessage({
                             d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
                           />
                         </svg>
-                        {match[1]}
+                        <span className="truncate group-hover:underline">{match[1]}</span>
                       </a>
                     );
                   }
-                  // Handle raw URLs without markdown format
                   const rawUrl = link.replace(/^[-*]\s*/, "").trim();
                   const urlMatch = rawUrl.match(/(https?:\/\/[^\s]+)/);
                   if (urlMatch) {
@@ -787,10 +817,10 @@ function AssistantMessage({
                         href={urlMatch[1]}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-2.5 text-sm text-gray-500 hover:text-[#3b3260] transition-colors truncate"
+                        className="flex items-center gap-2.5 text-sm text-[#3b3260]/70 hover:text-[#3b3260] transition-colors group"
                       >
                         <svg
-                          className="w-3.5 h-3.5 shrink-0"
+                          className="w-4 h-4 shrink-0 opacity-40 group-hover:opacity-100 transition-opacity"
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -802,7 +832,7 @@ function AssistantMessage({
                             d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
                           />
                         </svg>
-                        {rawUrl}
+                        <span className="truncate group-hover:underline">{rawUrl}</span>
                       </a>
                     );
                   }
