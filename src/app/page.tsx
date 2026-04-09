@@ -400,7 +400,7 @@ export default function Home() {
       {/* Main chat area */}
       <div className="flex flex-col flex-1 min-w-0">
         {/* Header */}
-        <header className={`bg-white border-b border-gray-100 px-5 py-4 flex items-center gap-4 shrink-0 transition-all duration-300 md:translate-y-0 ${scrollDir === "up" ? "-translate-y-full max-md:h-0 max-md:py-0 max-md:overflow-hidden" : "translate-y-0"}`}>
+        <header className="bg-white border-b border-gray-100 px-5 py-4 flex items-center gap-4 shrink-0">
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="md:hidden p-1.5 rounded-lg hover:bg-gray-50"
@@ -526,7 +526,7 @@ export default function Home() {
         </div>
 
         {/* Input */}
-        <div className={`border-t border-gray-100 bg-white px-5 py-4 shrink-0 transition-all duration-300 md:translate-y-0 ${scrollDir === "down" ? "translate-y-full max-md:h-0 max-md:py-0 max-md:overflow-hidden" : "translate-y-0"}`}>
+        <div className="border-t border-gray-100 bg-white px-5 py-4 shrink-0">
           <form
             onSubmit={handleSubmit}
             className="max-w-3xl mx-auto"
