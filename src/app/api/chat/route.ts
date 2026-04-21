@@ -59,8 +59,15 @@ interface BraveSearchResponse {
 }
 
 async function searchBrave(query: string): Promise<BraveResult[]> {
+  // Brave limits queries to ~400 chars. Keep the most relevant part.
+  const prefix = "site:jw.org OR site:wol.jw.org ";
+  const maxQueryLen = 350 - prefix.length;
+  const cleaned = query.replace(/\s+/g, " ").trim();
+  const shortQuery =
+    cleaned.length <= maxQueryLen ? cleaned : cleaned.slice(0, maxQueryLen);
+
   const url = new URL("https://api.search.brave.com/res/v1/web/search");
-  url.searchParams.set("q", `site:jw.org OR site:wol.jw.org ${query}`);
+  url.searchParams.set("q", `${prefix}${shortQuery}`);
   url.searchParams.set("count", "10");
   url.searchParams.set("search_lang", "fr");
 
@@ -104,7 +111,13 @@ export async function POST(req: NextRequest) {
     const isCasual = casualPatterns.test(message.trim());
 
     // Launch Brave search in parallel (don't await yet) for non-casual messages
-    const searchPromise = isCasual ? null : searchBrave(message);
+    // Catch errors silently — Brave failure shouldn't block Gemini
+    const searchPromise = isCasual
+      ? null
+      : searchBrave(message).catch((err) => {
+          console.error("Brave Search failed:", err);
+          return [] as BraveResult[];
+        });
 
     // Build conversation history for Gemini (limited to last 10 messages)
     const recentHistory = (history ?? []).slice(-10);
