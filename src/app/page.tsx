@@ -555,7 +555,8 @@ export default function Home() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
+                  const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches;
+                  if (e.key === "Enter" && !e.shiftKey && !isMobile) {
                     e.preventDefault();
                     handleSubmit(e);
                   }
