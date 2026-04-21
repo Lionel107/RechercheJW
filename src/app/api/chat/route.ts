@@ -12,9 +12,20 @@ const SYSTEM_PROMPT = `Tu es un assistant bienveillant, intelligent et cultivé.
 - Pour les conversations courantes (salutations, questions générales, humour), réponds naturellement sans chercher dans les sources. Sois humain.
 
 ## Tes sources de vérité
-- Les sites jw.org et wol.jw.org sont tes sources principales et les plus fiables. Quand des résultats de recherche te sont fournis, appuie-toi dessus en priorité.
+- Les sites jw.org et wol.jw.org sont tes sources principales et les plus fiables. Ce sont TES SOURCES PRIORITAIRES — elles prennent toujours le pas sur toute autre information.
 - Tu peux compléter avec tes connaissances générales pour donner du contexte, des explications historiques, des analogies ou des informations annexes utiles.
 - Quand tu utilises tes connaissances générales en complément, précise-le simplement (ex : "D'un point de vue historique..." ou "Pour mieux comprendre le contexte...").
+
+## Règle sur les sources externes
+- Par défaut, tu utilises UNIQUEMENT jw.org et wol.jw.org.
+- Si l'utilisateur demande EXPLICITEMENT de chercher ailleurs (ex : "cherche sur internet", "sur d'autres sites", "fais une recherche alternative"), tu reçois aussi des résultats d'autres sites marqués [SOURCE EXTERNE]. Tu peux alors les utiliser.
+- RÈGLE ABSOLUE : Quand tu utilises une source externe, tu dois TOUJOURS le signaler clairement. Ajoute (source externe) à côté du lien dans le texte, et dans la section Sources finale, regroupe les sources externes dans une sous-section distincte.
+- Même quand tu utilises des sources externes, jw.org/wol.jw.org restent prioritaires. Si une information externe contredit les sources jw.org, tu privilégies jw.org.
+
+## Quand aucun résultat n'est trouvé sur jw.org/wol.jw.org
+- Si aucun résultat pertinent n'est trouvé sur les sources par défaut et que l'utilisateur n'a PAS demandé de recherche alternative, NE TENTE PAS de répondre avec tes connaissances générales directement.
+- À la place, réponds brièvement : "Je n'ai pas trouvé d'information sur jw.org ou wol.jw.org concernant ce sujet. Souhaitez-vous que je fasse une recherche sur d'autres sites internet ?"
+- N'utilise PAS le format structuré Réponse/Explication/Sources dans ce cas — juste une phrase simple.
 
 ## Comment répondre aux questions de fond
 Quand la question porte sur un sujet sérieux (biblique, spirituel, doctrinal, pratique), structure ta réponse ainsi :
@@ -97,6 +108,41 @@ async function searchBrave(query: string): Promise<BraveResult[]> {
   });
 }
 
+async function searchBraveWeb(query: string): Promise<BraveResult[]> {
+  // Open web search — excludes jw.org/wol.jw.org (those are already searched)
+  const maxQueryLen = 350;
+  const cleaned = query.replace(/\s+/g, " ").trim();
+  const shortQuery =
+    cleaned.length <= maxQueryLen ? cleaned : cleaned.slice(0, maxQueryLen);
+
+  const url = new URL("https://api.search.brave.com/res/v1/web/search");
+  url.searchParams.set("q", `${shortQuery} -site:jw.org -site:wol.jw.org`);
+  url.searchParams.set("count", "8");
+  url.searchParams.set("search_lang", "fr");
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      Accept: "application/json",
+      "Accept-Encoding": "gzip",
+      "X-Subscription-Token": process.env.BRAVE_API_KEY!,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Brave Search error: ${response.status}`);
+  }
+
+  const data: BraveSearchResponse = await response.json();
+  return (data.web?.results ?? []).filter((r) => {
+    try {
+      const hostname = new URL(r.url).hostname;
+      return hostname !== "www.jw.org" && hostname !== "wol.jw.org";
+    } catch {
+      return false;
+    }
+  });
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { message, history, image } = await req.json();
@@ -110,12 +156,23 @@ export async function POST(req: NextRequest) {
       /^(bonjour|salut|hello|hi|hey|coucou|bonsoir|merci|au revoir|bye|ok|oui|non|d'accord|ça va|comment vas-tu|qui es-tu|comment tu t'appelles)[\s?!.,]*$/i;
     const isCasual = casualPatterns.test(message.trim());
 
-    // Launch Brave search in parallel (don't await yet) for non-casual messages
-    // Catch errors silently — Brave failure shouldn't block Gemini
-    const searchPromise = isCasual
+    // Detect if user explicitly requests alternative/external web search
+    const altSearchPatterns =
+      /\b(cherche(?:r|z)?\s+(?:sur\s+)?(?:internet|le\s+web|partout|ailleurs|d'?autres?\s+sites?)|recherche\s+(?:alternative|externe|globale|compl[èé]mentaire|[ée]largie)|fait?s?\s+une\s+recherche\s+(?:alternative|externe|sur\s+internet|ailleurs)|sur\s+d'?autres?\s+sites?|oui\s+(?:cherche|fais))\b/i;
+    const wantsExternal = altSearchPatterns.test(message);
+
+    // Launch searches in parallel
+    const defaultSearchPromise = isCasual
       ? null
       : searchBrave(message).catch((err) => {
           console.error("Brave Search failed:", err);
+          return [] as BraveResult[];
+        });
+
+    const externalSearchPromise = isCasual || !wantsExternal
+      ? null
+      : searchBraveWeb(message).catch((err) => {
+          console.error("Brave Web Search failed:", err);
           return [] as BraveResult[];
         });
 
@@ -130,18 +187,45 @@ export async function POST(req: NextRequest) {
 
     // Await Brave results only when needed
     let searchContext = "";
-    if (searchPromise) {
-      const searchResults = await searchPromise;
-      searchContext =
-        searchResults.length > 0
-          ? "\n\nRésultats de recherche sur jw.org et wol.jw.org :\n" +
-            searchResults
+    if (defaultSearchPromise) {
+      const [defaultResults, externalResults] = await Promise.all([
+        defaultSearchPromise,
+        externalSearchPromise ?? Promise.resolve([] as BraveResult[]),
+      ]);
+
+      const defaultBlock =
+        defaultResults.length > 0
+          ? "\n\nRésultats de recherche sur jw.org et wol.jw.org (SOURCES PRIORITAIRES) :\n" +
+            defaultResults
               .map(
                 (r, i) =>
                   `[${i + 1}] ${r.title}\nURL: ${r.url}\nExtrait: ${r.description}`
               )
               .join("\n\n")
-          : "\n\nAucun résultat pertinent trouvé sur jw.org ou wol.jw.org. Réponds avec tes connaissances générales si possible.";
+          : "\n\nAucun résultat pertinent trouvé sur jw.org ou wol.jw.org.";
+
+      let externalBlock = "";
+      if (wantsExternal && externalResults.length > 0) {
+        externalBlock =
+          "\n\nRésultats de recherche sur d'autres sites [SOURCE EXTERNE] (l'utilisateur a demandé une recherche alternative) :\n" +
+          externalResults
+            .map(
+              (r, i) =>
+                `[E${i + 1}] [SOURCE EXTERNE] ${r.title}\nURL: ${r.url}\nExtrait: ${r.description}`
+            )
+            .join("\n\n");
+      }
+
+      searchContext = defaultBlock + externalBlock;
+
+      // Add instruction based on context
+      if (defaultResults.length === 0 && !wantsExternal) {
+        searchContext +=
+          "\n\nINSTRUCTION : Aucun résultat sur les sources prioritaires et l'utilisateur n'a pas demandé de recherche alternative. Réponds brièvement en demandant s'il veut une recherche sur d'autres sites internet, sans utiliser le format structuré.";
+      } else if (wantsExternal) {
+        searchContext +=
+          "\n\nINSTRUCTION : L'utilisateur a demandé une recherche alternative. Utilise les sources externes en les signalant clairement avec la mention (source externe). Les sources jw.org/wol.jw.org restent prioritaires si elles couvrent le sujet.";
+      }
     }
 
     const userText = isCasual ? message : `${message}${searchContext}`;
