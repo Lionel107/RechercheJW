@@ -244,7 +244,7 @@ export default function Home() {
   }
 
   return (
-    <div className="flex h-screen bg-[#f8f7ff]">
+    <div className="flex h-screen w-screen overflow-hidden bg-[#f8f7ff]">
       {/* Sidebar overlay on mobile */}
       {sidebarOpen && (
         <div
