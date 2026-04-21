@@ -18,7 +18,9 @@ const SYSTEM_PROMPT = `Tu es un assistant bienveillant, intelligent et cultivé.
 
 ## Règle sur les sources externes
 - Par défaut, tu utilises UNIQUEMENT jw.org et wol.jw.org.
-- Si l'utilisateur demande EXPLICITEMENT de chercher ailleurs (ex : "cherche sur internet", "sur d'autres sites", "fais une recherche alternative"), tu reçois aussi des résultats d'autres sites marqués [SOURCE EXTERNE]. Tu peux alors les utiliser.
+- Si l'utilisateur demande EXPLICITEMENT de chercher ailleurs (ex : "cherche sur internet", "sur d'autres sites", "fais une recherche alternative"), tu reçois aussi des résultats d'autres sites marqués [SOURCE EXTERNE].
+- RÈGLE PRIORITAIRE : Même si des sources externes sont disponibles, si jw.org/wol.jw.org SUFFISENT à répondre complètement à la question, tu n'utilises QUE jw.org/wol.jw.org. Tu ignores totalement les sources externes dans ce cas.
+- Tu n'utilises les sources externes QUE si jw.org/wol.jw.org sont insuffisantes ou ne couvrent pas le sujet demandé.
 - RÈGLE ABSOLUE : Quand tu utilises une source externe, tu dois TOUJOURS le signaler clairement. Ajoute (source externe) à côté du lien dans le texte, et dans la section Sources finale, regroupe les sources externes dans une sous-section distincte.
 - Même quand tu utilises des sources externes, jw.org/wol.jw.org restent prioritaires. Si une information externe contredit les sources jw.org, tu privilégies jw.org.
 
@@ -224,7 +226,7 @@ export async function POST(req: NextRequest) {
           "\n\nINSTRUCTION : Aucun résultat sur les sources prioritaires et l'utilisateur n'a pas demandé de recherche alternative. Réponds brièvement en demandant s'il veut une recherche sur d'autres sites internet, sans utiliser le format structuré.";
       } else if (wantsExternal) {
         searchContext +=
-          "\n\nINSTRUCTION : L'utilisateur a demandé une recherche alternative. Utilise les sources externes en les signalant clairement avec la mention (source externe). Les sources jw.org/wol.jw.org restent prioritaires si elles couvrent le sujet.";
+          "\n\nINSTRUCTION : L'utilisateur a demandé une recherche alternative. RÈGLE IMPORTANTE : si les sources jw.org/wol.jw.org suffisent à répondre complètement à la question, IGNORE les sources externes et utilise uniquement jw.org/wol.jw.org. N'utilise les sources externes QUE si jw.org/wol.jw.org ne suffisent pas ou ne couvrent pas le sujet. Quand tu utilises une source externe, signale-la clairement avec la mention (source externe).";
       }
     }
 
