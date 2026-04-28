@@ -250,9 +250,8 @@ export async function POST(req: NextRequest) {
           return [] as BraveResult[];
         });
 
-    // Build conversation history for Gemini (limited to last 10 messages)
-    const recentHistory = (history ?? []).slice(-10);
-    const chatHistory = recentHistory.map(
+    // Build conversation history for Gemini (full history, no limit)
+    const chatHistory = (history ?? []).map(
       (msg: { role: string; content: string }) => ({
         role: msg.role === "assistant" ? "model" : "user",
         parts: [{ text: msg.content }],

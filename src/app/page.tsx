@@ -58,8 +58,9 @@ export default function Home() {
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
+      const maxH = Math.floor(window.innerHeight * 0.5);
       textareaRef.current.style.height =
-        Math.min(textareaRef.current.scrollHeight, 150) + "px";
+        Math.min(textareaRef.current.scrollHeight, maxH) + "px";
     }
   }, [input]);
 
