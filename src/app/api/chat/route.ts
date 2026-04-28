@@ -11,11 +11,14 @@ const SYSTEM_PROMPT = `Tu es un assistant bienveillant, intelligent et cultivé.
 - **Sources externes** : seulement si l'utilisateur le demande explicitement. Toujours marquées (source externe). En cas de contradiction avec jw.org, jw.org prime et tu signales le désaccord.
 
 ## Ressources jw.org/wol.jw.org utiles
-- Index biblique par verset (rsg19) : pour chaque verset, liste d'articles qui le commentent. Lien type : https://wol.jw.org/fr/wol/publication/r30/lp-f/rsg19/{numéro}
-- Bible TMN avec notes : https://wol.jw.org/fr/wol/b/r30/lp-f/nwtsty/{livre}/{chapitre}
-- Recherche wol : https://wol.jw.org/fr/wol/s/r30/lp-f?q={requête}
+- **Index biblique par verset (rsg19)** : pour chaque verset, liste d'articles/publications qui le commentent. Lien type : https://wol.jw.org/fr/wol/publication/r30/lp-f/rsg19/{numéro}
+- **Bible TMN avec notes** : https://wol.jw.org/fr/wol/b/r30/lp-f/nwtsty/{livre}/{chapitre}
+- **Recherche wol** : https://wol.jw.org/fr/wol/s/r30/lp-f?q={requête}
 
-Pour les questions bibliques approfondies, diversifie les références.
+## Pour l'analyse approfondie d'un verset biblique
+- L'**Index rsg19** est ta ressource principale : il pointe vers tous les articles qui commentent un verset précis. Donne toujours priorité aux commentaires d'articles trouvés via rsg19.
+- Complète avec les **notes d'étude** de la Bible TMN (nwtsty), qui sont plus brèves mais utiles pour le contexte immédiat du verset.
+- **Diversifie tes références** : ne te contente jamais d'une seule source. Cite plusieurs articles si plusieurs commentent le verset.
 
 ## Format pour les questions de fond
 
@@ -66,6 +69,68 @@ interface BraveWebResults {
 
 interface BraveSearchResponse {
   web?: BraveWebResults;
+}
+
+const FRENCH_BIBLE_BOOKS = [
+  "Genèse", "Exode", "Lévitique", "Nombres", "Deutéronome",
+  "Josué", "Juges", "Ruth", "1 Samuel", "2 Samuel",
+  "1 Rois", "2 Rois", "1 Chroniques", "2 Chroniques",
+  "Esdras", "Néhémie", "Esther", "Job", "Psaumes", "Psaume",
+  "Proverbes", "Ecclésiaste", "Cantique des cantiques", "Cantique",
+  "Isaïe", "Ésaïe", "Jérémie", "Lamentations", "Ézéchiel", "Daniel",
+  "Osée", "Joël", "Amos", "Abdias", "Jonas", "Michée",
+  "Nahoum", "Habacuc", "Sophonie", "Aggée", "Zacharie", "Malachie",
+  "Matthieu", "Marc", "Luc", "Jean",
+  "Actes", "Romains",
+  "1 Corinthiens", "2 Corinthiens",
+  "Galates", "Éphésiens", "Philippiens", "Colossiens",
+  "1 Thessaloniciens", "2 Thessaloniciens",
+  "1 Timothée", "2 Timothée", "Tite", "Philémon",
+  "Hébreux", "Jacques",
+  "1 Pierre", "2 Pierre",
+  "1 Jean", "2 Jean", "3 Jean",
+  "Jude", "Révélation", "Apocalypse",
+];
+
+function extractVerseRef(message: string): string | null {
+  // Detect Bible verse references like "Jean 3:16", "1 Corinthiens 13:4-7"
+  const booksPattern = FRENCH_BIBLE_BOOKS
+    .map((b) => b.replace(/\s/g, "\\s+").replace(/[èéëêÈÉËÊ]/g, "[èéëêÈÉËÊ]").replace(/[àâäÀÂÄ]/g, "[àâäÀÂÄ]").replace(/[ïîÏÎ]/g, "[ïîÏÎ]").replace(/[ôöÔÖ]/g, "[ôöÔÖ]").replace(/[ùûüÙÛÜ]/g, "[ùûüÙÛÜ]").replace(/[çÇ]/g, "[çÇ]"))
+    .join("|");
+  const regex = new RegExp(`\\b(${booksPattern})\\s+(\\d+):(\\d+)(?:-(\\d+))?\\b`, "i");
+  const match = message.match(regex);
+  if (!match) return null;
+  return `${match[1]} ${match[2]}:${match[3]}`;
+}
+
+async function searchVerseCommentary(verseRef: string): Promise<BraveResult[]> {
+  // Targeted search for articles commenting on a specific verse
+  const url = new URL("https://api.search.brave.com/res/v1/web/search");
+  url.searchParams.set("q", `site:wol.jw.org "${verseRef}"`);
+  url.searchParams.set("count", "5");
+  url.searchParams.set("search_lang", "fr");
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      Accept: "application/json",
+      "Accept-Encoding": "gzip",
+      "X-Subscription-Token": process.env.BRAVE_API_KEY!,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Brave Search error: ${response.status}`);
+  }
+
+  const data: BraveSearchResponse = await response.json();
+  return (data.web?.results ?? []).filter((r) => {
+    try {
+      const hostname = new URL(r.url).hostname;
+      return hostname === "wol.jw.org" || hostname === "www.jw.org";
+    } catch {
+      return false;
+    }
+  });
 }
 
 async function searchBrave(query: string): Promise<BraveResult[]> {
@@ -160,6 +225,9 @@ export async function POST(req: NextRequest) {
       /\b(cherche(?:r|z)?\s+(?:sur\s+)?(?:internet|le\s+web|partout|ailleurs|d'?autres?\s+sites?)|recherche\s+(?:alternative|externe|globale|compl[èé]mentaire|[ée]largie)|fait?s?\s+une\s+recherche\s+(?:alternative|externe|sur\s+internet|ailleurs)|sur\s+d'?autres?\s+sites?|oui\s+(?:cherche|fais))\b/i;
     const wantsExternal = altSearchPatterns.test(message);
 
+    // Detect Bible verse references for targeted search
+    const verseRef = isCasual ? null : extractVerseRef(message);
+
     // Launch searches in parallel
     const defaultSearchPromise = isCasual
       ? null
@@ -167,6 +235,13 @@ export async function POST(req: NextRequest) {
           console.error("Brave Search failed:", err);
           return [] as BraveResult[];
         });
+
+    const verseSearchPromise = verseRef
+      ? searchVerseCommentary(verseRef).catch((err) => {
+          console.error("Brave Verse Search failed:", err);
+          return [] as BraveResult[];
+        })
+      : null;
 
     const externalSearchPromise = isCasual || !wantsExternal
       ? null
@@ -187,15 +262,26 @@ export async function POST(req: NextRequest) {
     // Await Brave results only when needed
     let searchContext = "";
     if (defaultSearchPromise) {
-      const [defaultResults, externalResults] = await Promise.all([
+      const [defaultResults, verseResults, externalResults] = await Promise.all([
         defaultSearchPromise,
+        verseSearchPromise ?? Promise.resolve([] as BraveResult[]),
         externalSearchPromise ?? Promise.resolve([] as BraveResult[]),
       ]);
 
+      // Merge default results with verse-specific results, avoiding duplicates
+      const seenUrls = new Set(defaultResults.map((r) => r.url));
+      const mergedDefault = [...defaultResults];
+      for (const r of verseResults) {
+        if (!seenUrls.has(r.url)) {
+          mergedDefault.push(r);
+          seenUrls.add(r.url);
+        }
+      }
+
       const defaultBlock =
-        defaultResults.length > 0
-          ? "\n\nRésultats de recherche sur jw.org et wol.jw.org (SOURCES PRIORITAIRES) :\n" +
-            defaultResults
+        mergedDefault.length > 0
+          ? `\n\nRésultats de recherche sur jw.org et wol.jw.org (SOURCES PRIORITAIRES)${verseRef ? ` — verset détecté : ${verseRef}, articles commentant ce verset inclus` : ""} :\n` +
+            mergedDefault
               .map(
                 (r, i) =>
                   `[${i + 1}] ${r.title}\nURL: ${r.url}\nExtrait: ${r.description}`
