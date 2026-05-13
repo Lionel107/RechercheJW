@@ -630,8 +630,8 @@ function buildVerseUrl(reference: string): string | null {
 }
 
 function renderTextWithVerses(text: string) {
-  // Split by inline sources <<source: [Title](URL)>>, {{Verse}}, and [text](url)
-  const parts = text.split(/(<<source:.*?>>|\{\{[^}]+\}\}|\[[^\]]+\]\(https?:\/\/[^)]+\))/g);
+  // Split by inline sources, {{Verse}}, [text](url), **bold**, *italic*
+  const parts = text.split(/(<<source:.*?>>|\{\{[^}]+\}\}|\[[^\]]+\]\(https?:\/\/[^)]+\)|\*\*[^*\n]+\*\*|(?<!\*)\*[^*\n]+\*(?!\*))/g);
   return parts.map((part, i) => {
     // Handle <<source: [Title](URL)>> inline sources
     const sourceMatch = part.match(/^<<source:\s*(.+?)>>$/);
@@ -694,8 +694,119 @@ function renderTextWithVerses(text: string) {
         </a>
       );
     }
+
+    // Handle **bold**
+    if (/^\*\*[^*\n]+\*\*$/.test(part)) {
+      return (
+        <strong key={i} className="font-semibold text-[#3b3260]">
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+
+    // Handle *italic*
+    if (/^\*[^*\n]+\*$/.test(part)) {
+      return <em key={i}>{part.slice(1, -1)}</em>;
+    }
+
     return <span key={i}>{part}</span>;
   });
+}
+
+function renderMarkdownBody(text: string) {
+  // Split text into blocks (paragraphs, lists, sub-headings)
+  const lines = text.split("\n");
+  const blocks: React.ReactNode[] = [];
+  let paraBuffer: string[] = [];
+  let ulBuffer: string[] = [];
+  let olBuffer: string[] = [];
+
+  function flushPara() {
+    if (paraBuffer.length === 0) return;
+    const content = paraBuffer.join("\n");
+    blocks.push(
+      <p key={`p-${blocks.length}`} className="leading-relaxed">
+        {renderTextWithVerses(content)}
+      </p>
+    );
+    paraBuffer = [];
+  }
+
+  function flushUl() {
+    if (ulBuffer.length === 0) return;
+    blocks.push(
+      <ul
+        key={`ul-${blocks.length}`}
+        className="list-disc pl-5 space-y-1 my-1"
+      >
+        {ulBuffer.map((item, k) => (
+          <li key={k} className="leading-relaxed">
+            {renderTextWithVerses(item)}
+          </li>
+        ))}
+      </ul>
+    );
+    ulBuffer = [];
+  }
+
+  function flushOl() {
+    if (olBuffer.length === 0) return;
+    blocks.push(
+      <ol
+        key={`ol-${blocks.length}`}
+        className="list-decimal pl-5 space-y-1 my-1"
+      >
+        {olBuffer.map((item, k) => (
+          <li key={k} className="leading-relaxed">
+            {renderTextWithVerses(item)}
+          </li>
+        ))}
+      </ol>
+    );
+    olBuffer = [];
+  }
+
+  function flushAll() {
+    flushPara();
+    flushUl();
+    flushOl();
+  }
+
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/\s+$/, "");
+    const ulMatch = line.match(/^\s*[-*]\s+(.*)$/);
+    const olMatch = line.match(/^\s*\d+\.\s+(.*)$/);
+    const subHeadingMatch = line.match(/^#{2,4}\s+(.*)$/);
+
+    if (subHeadingMatch) {
+      flushAll();
+      blocks.push(
+        <h4
+          key={`h-${blocks.length}`}
+          className="font-semibold text-[#3b3260] mt-3 mb-1"
+        >
+          {renderTextWithVerses(subHeadingMatch[1])}
+        </h4>
+      );
+    } else if (ulMatch) {
+      flushPara();
+      flushOl();
+      ulBuffer.push(ulMatch[1]);
+    } else if (olMatch) {
+      flushPara();
+      flushUl();
+      olBuffer.push(olMatch[1]);
+    } else if (line.trim() === "") {
+      flushAll();
+    } else {
+      flushUl();
+      flushOl();
+      paraBuffer.push(line);
+    }
+  }
+  flushAll();
+
+  return <div className="space-y-2">{blocks}</div>;
 }
 
 function AssistantMessage({
@@ -708,7 +819,7 @@ function AssistantMessage({
   const sections = content.split(/^## /m).filter(Boolean);
 
   if (sections.length <= 1) {
-    return <p className="whitespace-pre-wrap">{content}</p>;
+    return <div className="text-sm text-gray-600">{renderMarkdownBody(content)}</div>;
   }
 
   return (
@@ -828,8 +939,8 @@ function AssistantMessage({
             <h3 className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.15em] mb-2">
               {title}
             </h3>
-            <div className="text-sm leading-relaxed whitespace-pre-wrap text-gray-600">
-              {renderTextWithVerses(body)}
+            <div className="text-sm text-gray-600">
+              {renderMarkdownBody(body)}
             </div>
           </div>
         );

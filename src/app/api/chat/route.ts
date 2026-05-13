@@ -52,6 +52,15 @@ Sources inline : à la fin de chaque paragraphe, ajoute <<source: [Titre](URL)>>
 
 **Opinions personnelles** : reste prudent. Ne donne pas tes propres positions sur la foi, la doctrine, les controverses. Présente ce que disent les sources ou différents angles. Pas de jugement personnel.
 
+## Mise en forme
+Pour mettre en valeur les idées importantes, utilise le markdown :
+- **mot ou phrase importante** pour le gras
+- *mot ou phrase nuancée* pour l'italique
+- Des listes à puces (\`- item\`) pour énumérer des points
+- Des listes numérotées (\`1. item\`) pour des étapes ordonnées
+
+Garde la mise en forme **sobre et efficace** : pas de gras à tout va, juste ce qui aide vraiment à la compréhension. N'utilise PAS \`##\` dans l'explication (réservé aux 4 sections principales).
+
 ## Règles absolues
 - Toujours en français.
 - N'invente jamais de lien.
@@ -215,26 +224,52 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Message requis" }, { status: 400 });
     }
 
-    // Detect if the message is casual conversation (no need to search)
-    const casualPatterns =
-      /^(bonjour|salut|hello|hi|hey|coucou|bonsoir|merci|au revoir|bye|ok|oui|non|d'accord|ça va|comment vas-tu|qui es-tu|comment tu t'appelles)[\s?!.,]*$/i;
-    const isCasual = casualPatterns.test(message.trim());
+    const trimmedMsg = message.trim();
+
+    // Detect Bible verse references — strong search signal
+    const verseRef = extractVerseRef(message);
 
     // Detect if user explicitly requests alternative/external web search
     const altSearchPatterns =
       /\b(cherche(?:r|z)?\s+(?:sur\s+)?(?:internet|le\s+web|partout|ailleurs|d'?autres?\s+sites?)|recherche\s+(?:alternative|externe|globale|compl[èé]mentaire|[ée]largie)|fait?s?\s+une\s+recherche\s+(?:alternative|externe|sur\s+internet|ailleurs)|sur\s+d'?autres?\s+sites?|oui\s+(?:cherche|fais))\b/i;
     const wantsExternal = altSearchPatterns.test(message);
 
-    // Detect Bible verse references for targeted search
-    const verseRef = isCasual ? null : extractVerseRef(message);
+    // Decide whether to search: default NO, only search if clear signal
+    function shouldSearch(): boolean {
+      if (verseRef) return true;
+      if (wantsExternal) return true;
+
+      // Imperative search verbs
+      const imperativeVerbs =
+        /\b(explique|analyse|d[ée]finis|d[ée]finition|raconte|d[ée]cris|d[ée]taille|montre[-\s]?moi|donne[-\s]?moi|parle[-\s]?moi|dis[-\s]?moi|trouve|cherche|interpr[èe]te|commente)\b/i;
+      if (imperativeVerbs.test(trimmedMsg)) return true;
+
+      // Question word at the start
+      const questionStart =
+        /^(que\s|qu'est[-\s]ce|qu'?en\s|quel(?:le|s|les)?\s|comment\s|pourquoi\s|o[uù]\s|quand\s|qui\s|qu'?en\s+pense)/i;
+      if (questionStart.test(trimmedMsg) && trimmedMsg.length > 10) return true;
+
+      // Religious/biblical keywords combined with a question mark or imperative
+      const religiousKeywords =
+        /\b(bible|verset|chapitre|j[ée]sus|christ|j[ée]hovah|dieu|[ée]criture|[ée]vangile|proph[èe]te|disciple|ap[ôo]tre|royaume|esprit\s+saint|paradis|salut|pri[èe]re|adoration|bapt[èê]me|r[ée]surrection|trinit[ée]|s[ée]rmon|miracle|p[ée]ch[ée]|foi|sanct[ui])/i;
+      if (
+        religiousKeywords.test(trimmedMsg) &&
+        (trimmedMsg.includes("?") || trimmedMsg.length > 30)
+      )
+        return true;
+
+      return false;
+    }
+
+    const doSearch = shouldSearch();
 
     // Launch searches in parallel
-    const defaultSearchPromise = isCasual
-      ? null
-      : searchBrave(message).catch((err) => {
+    const defaultSearchPromise = doSearch
+      ? searchBrave(message).catch((err) => {
           console.error("Brave Search failed:", err);
           return [] as BraveResult[];
-        });
+        })
+      : null;
 
     const verseSearchPromise = verseRef
       ? searchVerseCommentary(verseRef).catch((err) => {
@@ -243,7 +278,7 @@ export async function POST(req: NextRequest) {
         })
       : null;
 
-    const externalSearchPromise = isCasual || !wantsExternal
+    const externalSearchPromise = !doSearch || !wantsExternal
       ? null
       : searchBraveWeb(message).catch((err) => {
           console.error("Brave Web Search failed:", err);
@@ -312,7 +347,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const userText = isCasual ? message : `${message}${searchContext}`;
+    const userText = doSearch ? `${message}${searchContext}` : message;
 
     // Build message parts (text + optional image)
     const userParts: (string | { inlineData: { mimeType: string; data: string } })[] = [];
