@@ -631,7 +631,7 @@ function buildVerseUrl(reference: string): string | null {
 
 function renderTextWithVerses(text: string) {
   // Split by inline sources, {{Verse}}, [text](url), **bold**, *italic*
-  const parts = text.split(/(<<source:.*?>>|\{\{[^}]+\}\}|\[[^\]]+\]\(https?:\/\/[^)]+\)|\*\*[^*\n]+\*\*|(?<!\*)\*[^*\n]+\*(?!\*))/g);
+  const parts = text.split(/(<<source:.*?>>|\{\{[^}]+\}\}|\[[^\]]+\]\(https?:\/\/[^)]+\)|\*\*[^\n]+?\*\*|(?<![*\w])\*[^\n*]+?\*(?![*\w]))/g);
   return parts.map((part, i) => {
     // Handle <<source: [Title](URL)>> inline sources
     const sourceMatch = part.match(/^<<source:\s*(.+?)>>$/);
@@ -696,7 +696,7 @@ function renderTextWithVerses(text: string) {
     }
 
     // Handle **bold**
-    if (/^\*\*[^*\n]+\*\*$/.test(part)) {
+    if (/^\*\*[^\n]+\*\*$/.test(part)) {
       return (
         <strong key={i} className="font-semibold text-[#3b3260]">
           {part.slice(2, -2)}
@@ -705,7 +705,7 @@ function renderTextWithVerses(text: string) {
     }
 
     // Handle *italic*
-    if (/^\*[^*\n]+\*$/.test(part)) {
+    if (/^\*[^\n*]+\*$/.test(part)) {
       return <em key={i}>{part.slice(1, -1)}</em>;
     }
 
@@ -772,14 +772,17 @@ function renderMarkdownBody(text: string) {
     flushOl();
   }
 
+  let pendingBlank = false;
+
   for (const rawLine of lines) {
     const line = rawLine.replace(/\s+$/, "");
     const ulMatch = line.match(/^\s*[-*]\s+(.*)$/);
-    const olMatch = line.match(/^\s*\d+\.\s+(.*)$/);
-    const subHeadingMatch = line.match(/^#{2,4}\s+(.*)$/);
+    const olMatch = line.match(/^\s*\d+[.)]\s+(.*)$/);
+    const subHeadingMatch = line.match(/^#{2,4}\s*(.+)$/);
 
     if (subHeadingMatch) {
       flushAll();
+      pendingBlank = false;
       blocks.push(
         <h4
           key={`h-${blocks.length}`}
@@ -791,16 +794,22 @@ function renderMarkdownBody(text: string) {
     } else if (ulMatch) {
       flushPara();
       flushOl();
+      pendingBlank = false;
       ulBuffer.push(ulMatch[1]);
     } else if (olMatch) {
       flushPara();
       flushUl();
+      pendingBlank = false;
       olBuffer.push(olMatch[1]);
     } else if (line.trim() === "") {
-      flushAll();
+      pendingBlank = true;
     } else {
-      flushUl();
-      flushOl();
+      // Non-list, non-empty line — breaks any pending list
+      if (pendingBlank || ulBuffer.length > 0 || olBuffer.length > 0) {
+        flushUl();
+        flushOl();
+      }
+      pendingBlank = false;
       paraBuffer.push(line);
     }
   }
