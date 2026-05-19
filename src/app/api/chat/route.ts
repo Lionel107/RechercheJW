@@ -66,6 +66,128 @@ Garde la mise en forme **sobre et efficace** : pas de gras à tout va, juste ce 
 - N'invente jamais de lien.
 - Clarté et pédagogie avant exhaustivité.`;
 
+const MODE_PROMPTS: Record<string, string> = {
+  default: "",
+
+  etude: `
+
+## MODE ACTIF : ÉTUDE
+Tu es en mode étude. L'utilisateur veut approfondir un sujet comme dans une vraie séance d'étude méticuleuse.
+- Construis ta réponse comme une étude organisée : structure obligatoire avec **sous-titres ### dans l'explication** pour s'y retrouver facilement.
+- Plusieurs paragraphes par section. Réflexion détaillée, pas une simple compilation.
+- Utilise et cite **plusieurs articles** trouvés dans les résultats. Montre la diversité des sources jw.org.
+- Cite explicitement les articles inline avec <<source: [Titre](URL)>> et regroupe-les tous dans la section Sources.
+- Propose **4 à 5 questions suggérées** pour approfondir davantage.
+- Si les résultats de recherche sont vides ou non pertinents : ne fabrique PAS de réponse. Demande à l'utilisateur de reformuler sa question ("Je n'ai pas trouvé de résultats pertinents. Pourriez-vous reformuler votre question ou la préciser ?").`,
+
+  pratique: `
+
+## MODE ACTIF : PRATIQUE
+Tu es en mode pratique. L'utilisateur connaît déjà les publications jw.org et cherche un conseil concret applicable.
+- Vocabulaire interne accepté (vérité, organisation, prédication, etc.) sans définition.
+- **Réponse = solution concrète immédiate**, directement applicable.
+- **Explication = liste numérotée d'étapes ou conseils concrets**. Pas de théorie abstraite.
+- 2-3 versets-clés maximum, ceux qui guident l'action.
+- Ton chaleureux, encourageant, comme un frère/sœur qui partage son expérience.
+- 2-3 questions suggérées orientées application ("comment commencer aujourd'hui ?").`,
+
+  apologetique: `
+
+## MODE ACTIF : APOLOGÉTIQUE
+Tu es en mode apologétique. L'utilisateur veut des arguments solides pour défendre ou convaincre. Position ferme et structurée.
+
+Identifie d'abord le type d'objection :
+- **OBJECTION PRÉCISE** (théologique, doctrinale, historique) : structure ta réponse en 4 sous-sections ### :
+  1. **### Position adverse** — résume fidèlement ce que pensent les opposants (montre que tu as compris)
+  2. **### Faille du raisonnement adverse** — pointe les incohérences ou présupposés discutables
+  3. **### Position jw.org** — expose la position avec arguments bibliques et publications
+  4. **### Arguments complémentaires** — apporte tes connaissances historiques/scientifiques en appui (signale-les si non issues de jw.org)
+
+- **OBJECTION GÉNÉRIQUE** (attaque vague, dénigrement général) : réponse directe et structurée de la position jw.org sans détailler la position adverse.
+
+Règles communes :
+- Position assumée et ferme, montre **pourquoi la position tient**.
+- Mobilise tes connaissances historiques et scientifiques quand pertinent — signale clairement quand l'argument vient de tes connaissances et pas de jw.org.
+- Ton respectueux mais ferme, **jamais polémique ni dénigrant**.
+- Versets-clés en appui de chaque argument.
+- 3-4 questions suggérées pour creuser l'argumentation.`,
+
+  perle: `
+
+## MODE ACTIF : PERLE
+Tu es en mode perle — analyse biblique maximale. L'utilisateur envoie un verset ou un chapitre.
+
+**Étape 0** : si aucun verset ou chapitre clairement identifié, demande : "Quel verset ou chapitre souhaitez-vous analyser ?". Ne fais rien d'autre.
+
+**Étape 1** : analyse verset par verset (ou par bloc cohérent si plusieurs versets forment une même idée). Va jusqu'au bout même si le chapitre est long.
+
+**Structure pour chaque verset/bloc** (utilise ### pour chaque verset) :
+
+### Verset X (ou X-Y si bloc)
+> Citation TMN du verset
+
+**Message théologique** — Ce que ce verset nous apprend sur Dieu, son projet pour l'humanité, Jésus, le Royaume.
+
+**Contexte historique** — Situation, époque, lieu, événements qui entourent.
+
+**Personnages** — Conditions de vie, sentiments, motivations. Pourquoi agissent-ils ainsi ? Quel est leur état d'esprit ?
+
+**Application aujourd'hui** — Pourquoi ce verset nous concerne. Comment l'appliquer concrètement.
+
+**Renvois bibliques** — Autres versets qui éclairent ({{...}}).
+
+**Sources** — <<source: [Titre](URL)>> pour les articles consultés.
+
+Règles :
+- Format long assumé : on extrait tout ce qui peut être tiré du texte.
+- Beaucoup de versets cliquables {{Livre chap:verset}} pour les renvois.
+- Sources explicites pour chaque verset analysé.
+- Pas de section "Questions suggérées" — l'analyse se suffit à elle-même.`,
+};
+
+async function reformulateQuery(question: string): Promise<string[]> {
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+    const prompt = `Voici une question d'un utilisateur : "${question}"
+
+Génère 2 requêtes courtes de recherche (3-6 mots-clés chacune) pour trouver des articles pertinents sur jw.org. Privilégie les termes que les publications jw.org utilisent.
+
+Réponds UNIQUEMENT par les 2 requêtes séparées par | (rien d'autre, pas de préambule).
+Exemple : amour du prochain Jésus | comment aimer son prochain`;
+
+    const result = await model.generateContent(prompt);
+    const text = result.response.text().trim();
+    const queries = text
+      .split("|")
+      .map((s) => s.replace(/^[-*\d.]\s*/, "").trim())
+      .filter((s) => s.length > 0 && s.length < 100)
+      .slice(0, 3);
+    if (queries.length === 0) return [question];
+    return queries;
+  } catch {
+    return [question];
+  }
+}
+
+async function searchCascade(queries: string[]): Promise<BraveResult[]> {
+  const allResults: BraveResult[] = [];
+  const seenUrls = new Set<string>();
+
+  const results = await Promise.all(
+    queries.map((q) => searchBrave(q).catch(() => [] as BraveResult[]))
+  );
+
+  for (const resultSet of results) {
+    for (const r of resultSet) {
+      if (!seenUrls.has(r.url)) {
+        allResults.push(r);
+        seenUrls.add(r.url);
+      }
+    }
+  }
+  return allResults.slice(0, 15);
+}
+
 interface BraveResult {
   title: string;
   url: string;
@@ -218,11 +340,15 @@ async function searchBraveWeb(query: string): Promise<BraveResult[]> {
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, history, image } = await req.json();
+    const { message, history, image, mode: rawMode } = await req.json();
 
     if (!message || typeof message !== "string") {
       return NextResponse.json({ error: "Message requis" }, { status: 400 });
     }
+
+    const mode: string = ["default", "etude", "pratique", "apologetique", "perle"].includes(rawMode)
+      ? rawMode
+      : "default";
 
     const trimmedMsg = message.trim();
 
@@ -234,22 +360,40 @@ export async function POST(req: NextRequest) {
       /\b(cherche(?:r|z)?\s+(?:sur\s+)?(?:internet|le\s+web|partout|ailleurs|d'?autres?\s+sites?)|recherche\s+(?:alternative|externe|globale|compl[èé]mentaire|[ée]largie)|fait?s?\s+une\s+recherche\s+(?:alternative|externe|sur\s+internet|ailleurs)|sur\s+d'?autres?\s+sites?|oui\s+(?:cherche|fais))\b/i;
     const wantsExternal = altSearchPatterns.test(message);
 
-    // Decide whether to search: default NO, only search if clear signal
+    // Casual / instruction patterns — never search even in research modes
+    const casualPatterns =
+      /^(bonjour|salut|hello|hi|hey|coucou|bonsoir|merci|au revoir|bye|ok|oui|non|d'?accord|ça va|comment vas-tu|qui es-tu|comment tu t'appelles)[\s?!.,]*$/i;
+    const instructionStart =
+      /^(à\s+partir\s+de\s+maintenant|d[ée]sormais|dor[ée]navant|j'?aimerais\s+que|je\s+pr[ée]f[èe]re|je\s+veux\s+que|je\s+voudrais\s+que|essai[ez]\s+de|ne\s+(fais|dis|cherche|mets)\s+pas|tu\s+(vois|comprends)\??)/i;
+    const isCasualOrInstruction =
+      casualPatterns.test(trimmedMsg) || instructionStart.test(trimmedMsg);
+
+    // Decide whether to search based on mode
     function shouldSearch(): boolean {
+      if (isCasualOrInstruction) return false;
+
+      // Research modes : search by default
+      if (mode === "etude" || mode === "pratique" || mode === "apologetique") {
+        return true;
+      }
+
+      // Perle : only if a verse is detected
+      if (mode === "perle") {
+        return verseRef !== null;
+      }
+
+      // Default mode : search only on clear signal
       if (verseRef) return true;
       if (wantsExternal) return true;
 
-      // Imperative search verbs
       const imperativeVerbs =
         /\b(explique|analyse|d[ée]finis|d[ée]finition|raconte|d[ée]cris|d[ée]taille|montre[-\s]?moi|donne[-\s]?moi|parle[-\s]?moi|dis[-\s]?moi|trouve|cherche|interpr[èe]te|commente)\b/i;
       if (imperativeVerbs.test(trimmedMsg)) return true;
 
-      // Question word at the start
       const questionStart =
         /^(que\s|qu'est[-\s]ce|qu'?en\s|quel(?:le|s|les)?\s|comment\s|pourquoi\s|o[uù]\s|quand\s|qui\s|qu'?en\s+pense)/i;
       if (questionStart.test(trimmedMsg) && trimmedMsg.length > 10) return true;
 
-      // Religious/biblical keywords combined with a question mark or imperative
       const religiousKeywords =
         /\b(bible|verset|chapitre|j[ée]sus|christ|j[ée]hovah|dieu|[ée]criture|[ée]vangile|proph[èe]te|disciple|ap[ôo]tre|royaume|esprit\s+saint|paradis|salut|pri[èe]re|adoration|bapt[èê]me|r[ée]surrection|trinit[ée]|s[ée]rmon|miracle|p[ée]ch[ée]|foi|sanct[ui])/i;
       if (
@@ -263,15 +407,32 @@ export async function POST(req: NextRequest) {
 
     const doSearch = shouldSearch();
 
+    // Mode-specific search strategy
+    const useReformulation =
+      doSearch && ["etude", "pratique", "apologetique", "perle"].includes(mode);
+    const useCascade =
+      doSearch && ["etude", "apologetique", "perle"].includes(mode);
+
+    // Get queries (reformulated if mode supports it)
+    let queries: string[] = [message];
+    if (useReformulation) {
+      queries = await reformulateQuery(message);
+    }
+
     // Launch searches in parallel
     const defaultSearchPromise = doSearch
-      ? searchBrave(message).catch((err) => {
-          console.error("Brave Search failed:", err);
-          return [] as BraveResult[];
-        })
+      ? (useCascade
+          ? searchCascade(queries).catch((err) => {
+              console.error("Brave Cascade Search failed:", err);
+              return [] as BraveResult[];
+            })
+          : searchBrave(queries[0] ?? message).catch((err) => {
+              console.error("Brave Search failed:", err);
+              return [] as BraveResult[];
+            }))
       : null;
 
-    const verseSearchPromise = verseRef
+    const verseSearchPromise = verseRef && doSearch
       ? searchVerseCommentary(verseRef).catch((err) => {
           console.error("Brave Verse Search failed:", err);
           return [] as BraveResult[];
@@ -337,8 +498,12 @@ export async function POST(req: NextRequest) {
 
       searchContext = defaultBlock + externalBlock;
 
-      // Add instruction based on context
-      if (defaultResults.length === 0 && !wantsExternal) {
+      // Add instruction based on context and mode
+      const mergedDefaultEmpty = mergedDefault.length === 0;
+      if (mergedDefaultEmpty && mode === "etude") {
+        searchContext +=
+          "\n\nINSTRUCTION : Mode Étude actif et aucun résultat trouvé. NE FABRIQUE PAS de réponse. Demande à l'utilisateur de reformuler sa question ou de la préciser, sans utiliser le format structuré.";
+      } else if (mergedDefaultEmpty && !wantsExternal) {
         searchContext +=
           "\n\nINSTRUCTION : Aucun résultat sur les sources prioritaires et l'utilisateur n'a pas demandé de recherche alternative. Réponds brièvement en demandant s'il veut une recherche sur d'autres sites internet, sans utiliser le format structuré.";
       } else if (wantsExternal) {
@@ -374,7 +539,7 @@ export async function POST(req: NextRequest) {
       try {
         const model = genAI.getGenerativeModel({
           model: modelName,
-          systemInstruction: SYSTEM_PROMPT,
+          systemInstruction: SYSTEM_PROMPT + (MODE_PROMPTS[mode] ?? ""),
         });
 
         const chat = model.startChat({ history: chatHistory });

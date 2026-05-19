@@ -51,6 +51,15 @@ textarea {
   background: #b0aac6;
 }
 
+/* Scrollbar hide pour les pills de modes */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
 /* Animation livre ouverture/fermeture */
 @keyframes book {
   0%, 100% {

@@ -15,6 +15,17 @@ interface Conversation {
 }
 
 const STORAGE_KEY = "jw-assistant-conversations";
+const MODE_KEY = "jw-assistant-mode";
+
+type Mode = "default" | "etude" | "pratique" | "apologetique" | "perle";
+
+const MODES: { id: Mode; label: string; description: string }[] = [
+  { id: "default", label: "Discussion", description: "Dialogue libre" },
+  { id: "etude", label: "Étude", description: "Réflexion approfondie sur un sujet" },
+  { id: "pratique", label: "Pratique", description: "Conseils concrets et applicables" },
+  { id: "apologetique", label: "Apologétique", description: "Arguments pour défendre" },
+  { id: "perle", label: "Perle", description: "Analyse verset par verset" },
+];
 
 function loadConversations(): Conversation[] {
   if (typeof window === "undefined") return [];
@@ -30,6 +41,15 @@ function saveConversations(conversations: Conversation[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
 }
 
+function loadMode(): Mode {
+  if (typeof window === "undefined") return "default";
+  try {
+    const stored = localStorage.getItem(MODE_KEY);
+    if (stored && MODES.some((m) => m.id === stored)) return stored as Mode;
+  } catch {}
+  return "default";
+}
+
 export default function Home() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -40,6 +60,7 @@ export default function Home() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [mode, setMode] = useState<Mode>("default");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -48,7 +69,15 @@ export default function Home() {
   useEffect(() => {
     const loaded = loadConversations();
     setConversations(loaded);
+    setMode(loadMode());
   }, []);
+
+  function changeMode(newMode: Mode) {
+    setMode(newMode);
+    try {
+      localStorage.setItem(MODE_KEY, newMode);
+    } catch {}
+  }
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -178,6 +207,7 @@ export default function Home() {
           message: trimmed,
           history: messages,
           image: selectedImage || undefined,
+          mode,
         }),
       });
 
@@ -418,7 +448,7 @@ export default function Home() {
               />
             </svg>
           </div>
-          <div>
+          <div className="flex-1 min-w-0">
             <h1 className="text-lg font-semibold text-[#3b3260] tracking-tight">
               Assistant Recherche
             </h1>
@@ -427,6 +457,26 @@ export default function Home() {
             </p>
           </div>
         </header>
+
+        {/* Mode selector */}
+        <div className="bg-white border-b border-gray-100 px-3 py-2 shrink-0">
+          <div className="flex gap-1.5 overflow-x-auto scrollbar-hide max-w-full">
+            {MODES.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => changeMode(m.id)}
+                title={m.description}
+                className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                  mode === m.id
+                    ? "bg-[#3b3260] text-white shadow-sm"
+                    : "bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-[#3b3260]"
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* Messages */}
         <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-8">
@@ -451,8 +501,11 @@ export default function Home() {
                 Posez votre question
               </h2>
               <p className="text-gray-400 max-w-sm leading-relaxed text-sm">
-                Je recherche les informations sur jw.org et wol.jw.org pour vous
-                fournir des réponses précises et sourcées.
+                {MODES.find((m) => m.id === mode)?.description ??
+                  "Je recherche les informations sur jw.org et wol.jw.org pour vous fournir des réponses précises et sourcées."}
+              </p>
+              <p className="mt-3 text-[10px] uppercase tracking-[0.2em] text-[#3b3260]/60">
+                Mode : {MODES.find((m) => m.id === mode)?.label}
               </p>
             </div>
           ) : (
