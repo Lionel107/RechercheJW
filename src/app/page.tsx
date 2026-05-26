@@ -65,6 +65,7 @@ export default function Home() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const isAtBottomRef = useRef(true);
 
   useEffect(() => {
     const loaded = loadConversations();
@@ -79,8 +80,25 @@ export default function Home() {
     } catch {}
   }
 
+  // Auto-scroll only when user is already near the bottom (auto-follow)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    function handleScroll() {
+      if (!container) return;
+      const threshold = 100;
+      isAtBottomRef.current =
+        container.scrollHeight - container.scrollTop - container.clientHeight <
+        threshold;
+    }
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
+    if (isAtBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
 
@@ -194,6 +212,8 @@ export default function Home() {
 
     const userMessage: Message = { role: "user", content: trimmed };
     const newMessages = [...messages, userMessage];
+    // Force scroll on user submit (they want to see their message and the start of response)
+    isAtBottomRef.current = true;
     setMessages(newMessages);
     setInput("");
     setSelectedImage(null);
