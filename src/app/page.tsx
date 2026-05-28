@@ -81,6 +81,27 @@ export default function Home() {
     } catch {}
   }
 
+  // Keep layout height in sync with the actual visible viewport.
+  // On mobile, when the keyboard appears, the visual viewport shrinks.
+  // We resize the layout so the header stays at the top and only the
+  // messages area shrinks to make room for the keyboard.
+  useEffect(() => {
+    function update() {
+      const h =
+        window.visualViewport?.height ?? window.innerHeight;
+      document.documentElement.style.setProperty("--app-height", `${h}px`);
+    }
+    update();
+    window.addEventListener("resize", update);
+    window.visualViewport?.addEventListener("resize", update);
+    window.visualViewport?.addEventListener("scroll", update);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.visualViewport?.removeEventListener("resize", update);
+      window.visualViewport?.removeEventListener("scroll", update);
+    };
+  }, []);
+
   // Scroll only when user sends a new message (tied to their action).
   // When the assistant message is added or content streams, NO auto-scroll
   // at all — the screen stays exactly where it is.
@@ -300,7 +321,10 @@ export default function Home() {
   }
 
   return (
-    <div className="flex h-[100dvh] w-full overflow-hidden bg-[#f8f7ff]">
+    <div
+      className="flex w-full overflow-hidden bg-[#f8f7ff]"
+      style={{ height: "var(--app-height, 100dvh)" }}
+    >
       {/* Sidebar overlay on mobile */}
       {sidebarOpen && (
         <div
@@ -534,7 +558,7 @@ export default function Home() {
               </p>
             </div>
           ) : (
-            <div className="max-w-3xl mx-auto space-y-6">
+            <div className="max-w-4xl mx-auto space-y-6">
               {messages.map((msg, i) => {
                 const isLast = i === messages.length - 1;
                 return (
@@ -544,10 +568,10 @@ export default function Home() {
                   className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`max-w-[85%] rounded-2xl px-5 py-4 ${
+                    className={`rounded-2xl px-5 py-4 ${
                       msg.role === "user"
-                        ? "bg-[#3b3260] text-white/90"
-                        : "bg-white border border-gray-100 text-gray-600 shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
+                        ? "max-w-[85%] bg-[#3b3260] text-white/90"
+                        : "w-full bg-white border border-gray-100 text-gray-600 shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
                     }`}
                   >
                     {msg.role === "assistant" ? (
@@ -586,7 +610,7 @@ export default function Home() {
         <div className="border-t border-gray-100 bg-white/80 backdrop-blur-md px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] shrink-0 z-10 shadow-[0_-1px_2px_rgba(0,0,0,0.02)]">
           <form
             onSubmit={handleSubmit}
-            className="max-w-3xl mx-auto"
+            className="max-w-4xl mx-auto"
           >
             {selectedImage && (
               <div className="mb-2 relative inline-block">
