@@ -144,12 +144,16 @@ export default function Home() {
     setConversations(updated);
     saveConversations(updated);
     setActiveId(id);
+    // Sync ref so the scroll effect doesn't treat this as a new message
+    prevMessageCountRef.current = 0;
     setMessages([]);
     setSidebarOpen(false);
   }
 
   function openConversation(conv: Conversation) {
     setActiveId(conv.id);
+    // Sync ref so loading messages from another conversation doesn't trigger scroll
+    prevMessageCountRef.current = conv.messages.length;
     setMessages(conv.messages);
     setSidebarOpen(false);
   }
