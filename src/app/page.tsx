@@ -65,7 +65,7 @@ export default function Home() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const assistantMessageRef = useRef<HTMLDivElement>(null);
+  const lastMessageRef = useRef<HTMLDivElement>(null);
   const prevMessageCountRef = useRef(0);
 
   useEffect(() => {
@@ -93,8 +93,12 @@ export default function Home() {
 
     const lastMessage = messages[newCount - 1];
     if (lastMessage?.role === "user") {
+      // Place the user's new message at the top of the viewport (just under header)
       setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        lastMessageRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
       }, 50);
     }
     // Assistant message added: do nothing (no scroll)
@@ -532,12 +536,11 @@ export default function Home() {
           ) : (
             <div className="max-w-3xl mx-auto space-y-6">
               {messages.map((msg, i) => {
-                const isLastAssistant =
-                  msg.role === "assistant" && i === messages.length - 1;
+                const isLast = i === messages.length - 1;
                 return (
                 <div
                   key={i}
-                  ref={isLastAssistant ? assistantMessageRef : undefined}
+                  ref={isLast ? lastMessageRef : undefined}
                   className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                   <div
