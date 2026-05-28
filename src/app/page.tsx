@@ -663,7 +663,7 @@ export default function Home() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
                   const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches;
-                  if (e.key === "Enter" && !e.shiftKey && !isMobile) {
+                  if (e.key === "Enter" && !e.shiftKey && !isMobile && !isLoading) {
                     e.preventDefault();
                     handleSubmit(e);
                   }
@@ -671,7 +671,6 @@ export default function Home() {
                 placeholder="Posez votre question..."
                 rows={1}
                 className="flex-1 resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-[#3b3260] placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#3b3260]/20 focus:border-[#3b3260]/30 focus:bg-white transition-all"
-                disabled={isLoading}
               />
               <button
                 type="submit"
