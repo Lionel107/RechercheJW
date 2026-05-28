@@ -114,13 +114,19 @@ export default function Home() {
 
     const lastMessage = messages[newCount - 1];
     if (lastMessage?.role === "user") {
-      // Place the user's new message at the top of the viewport (just under header)
-      setTimeout(() => {
-        lastMessageRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
+      // Place the user's new message at the top of the messages container,
+      // just under the header. Compute the scroll offset manually for reliability.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const container = messagesContainerRef.current;
+          const el = lastMessageRef.current;
+          if (!container || !el) return;
+          const containerRect = container.getBoundingClientRect();
+          const elRect = el.getBoundingClientRect();
+          const target = elRect.top - containerRect.top + container.scrollTop;
+          container.scrollTo({ top: target, behavior: "smooth" });
         });
-      }, 50);
+      });
     }
     // Assistant message added: do nothing (no scroll)
   }, [messages]);
@@ -528,7 +534,7 @@ export default function Home() {
         </div>
 
         {/* Messages */}
-        <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-8">
+        <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 pt-4 pb-8">
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <div className="w-20 h-20 bg-[#3b3260] rounded-2xl flex items-center justify-center mb-6">
