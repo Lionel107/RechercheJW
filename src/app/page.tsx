@@ -65,7 +65,8 @@ export default function Home() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const isAtBottomRef = useRef(true);
+  const assistantMessageRef = useRef<HTMLDivElement>(null);
+  const prevMessageCountRef = useRef(0);
 
   useEffect(() => {
     const loaded = loadConversations();
@@ -80,25 +81,29 @@ export default function Home() {
     } catch {}
   }
 
-  // Auto-scroll only when user is already near the bottom (auto-follow)
+  // Scroll only when a new message is ADDED (not on streaming updates)
+  // - User message added → scroll to bottom to show it
+  // - Assistant message added → scroll to its TOP so user reads from the start
   useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
-    function handleScroll() {
-      if (!container) return;
-      const threshold = 100;
-      isAtBottomRef.current =
-        container.scrollHeight - container.scrollTop - container.clientHeight <
-        threshold;
-    }
-    container.addEventListener("scroll", handleScroll, { passive: true });
-    return () => container.removeEventListener("scroll", handleScroll);
-  }, []);
+    const newCount = messages.length;
+    const prevCount = prevMessageCountRef.current;
+    prevMessageCountRef.current = newCount;
 
-  useEffect(() => {
-    if (isAtBottomRef.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
+    // Only act on single new message addition (not bulk load, not content update)
+    if (newCount !== prevCount + 1) return;
+
+    const lastMessage = messages[newCount - 1];
+
+    setTimeout(() => {
+      if (lastMessage?.role === "user") {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      } else if (lastMessage?.role === "assistant") {
+        assistantMessageRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }
+    }, 50);
   }, [messages]);
 
 
@@ -212,8 +217,6 @@ export default function Home() {
 
     const userMessage: Message = { role: "user", content: trimmed };
     const newMessages = [...messages, userMessage];
-    // Force scroll on user submit (they want to see their message and the start of response)
-    isAtBottomRef.current = true;
     setMessages(newMessages);
     setInput("");
     setSelectedImage(null);
@@ -530,9 +533,13 @@ export default function Home() {
             </div>
           ) : (
             <div className="max-w-3xl mx-auto space-y-6">
-              {messages.map((msg, i) => (
+              {messages.map((msg, i) => {
+                const isLastAssistant =
+                  msg.role === "assistant" && i === messages.length - 1;
+                return (
                 <div
                   key={i}
+                  ref={isLastAssistant ? assistantMessageRef : undefined}
                   className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                   <div
@@ -552,7 +559,8 @@ export default function Home() {
                     )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
               {isLoading && messages[messages.length - 1]?.role === "user" && (
                 <div className="flex justify-start">
                   <div className="bg-white border border-gray-100 rounded-2xl px-5 py-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex items-center gap-3">
