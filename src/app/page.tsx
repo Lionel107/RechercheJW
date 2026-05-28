@@ -81,29 +81,23 @@ export default function Home() {
     } catch {}
   }
 
-  // Scroll only when a new message is ADDED (not on streaming updates)
-  // - User message added → scroll to bottom to show it
-  // - Assistant message added → scroll to its TOP so user reads from the start
+  // Scroll only when user sends a new message (tied to their action).
+  // When the assistant message is added or content streams, NO auto-scroll
+  // at all — the screen stays exactly where it is.
   useEffect(() => {
     const newCount = messages.length;
     const prevCount = prevMessageCountRef.current;
     prevMessageCountRef.current = newCount;
 
-    // Only act on single new message addition (not bulk load, not content update)
     if (newCount !== prevCount + 1) return;
 
     const lastMessage = messages[newCount - 1];
-
-    setTimeout(() => {
-      if (lastMessage?.role === "user") {
+    if (lastMessage?.role === "user") {
+      setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-      } else if (lastMessage?.role === "assistant") {
-        assistantMessageRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-      }
-    }, 50);
+      }, 50);
+    }
+    // Assistant message added: do nothing (no scroll)
   }, [messages]);
 
 
