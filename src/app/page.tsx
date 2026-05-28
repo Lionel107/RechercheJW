@@ -300,7 +300,7 @@ export default function Home() {
   }
 
   return (
-    <div className="flex h-[100dvh] w-screen overflow-hidden bg-[#f8f7ff]">
+    <div className="flex h-[100dvh] w-full overflow-hidden bg-[#f8f7ff]">
       {/* Sidebar overlay on mobile */}
       {sidebarOpen && (
         <div
@@ -583,7 +583,7 @@ export default function Home() {
         </div>
 
         {/* Input */}
-        <div className="border-t border-gray-100 bg-white/80 backdrop-blur-md px-5 py-4 shrink-0 z-10 shadow-[0_-1px_2px_rgba(0,0,0,0.02)]">
+        <div className="border-t border-gray-100 bg-white/80 backdrop-blur-md px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] shrink-0 z-10 shadow-[0_-1px_2px_rgba(0,0,0,0.02)]">
           <form
             onSubmit={handleSubmit}
             className="max-w-3xl mx-auto"
