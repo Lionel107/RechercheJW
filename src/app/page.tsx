@@ -300,7 +300,7 @@ export default function Home() {
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#f8f7ff]">
+    <div className="flex h-[100dvh] w-screen overflow-hidden bg-[#f8f7ff]">
       {/* Sidebar overlay on mobile */}
       {sidebarOpen && (
         <div
@@ -439,7 +439,7 @@ export default function Home() {
       {/* Main chat area */}
       <div className="flex flex-col flex-1 min-w-0">
         {/* Header */}
-        <header className="bg-white border-b border-gray-100 px-5 py-4 flex items-center gap-4 shrink-0">
+        <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 px-5 py-4 flex items-center gap-4 shrink-0 z-10 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="md:hidden p-1.5 rounded-lg hover:bg-gray-50"
@@ -484,7 +484,7 @@ export default function Home() {
         </header>
 
         {/* Mode selector */}
-        <div className="bg-white border-b border-gray-100 px-3 py-2 shrink-0">
+        <div className="bg-white/80 backdrop-blur-md border-b border-gray-100 px-3 py-2 shrink-0 z-10">
           <div className="flex gap-1.5 overflow-x-auto scrollbar-hide max-w-full">
             {MODES.map((m) => (
               <button
@@ -576,14 +576,14 @@ export default function Home() {
         </div>
 
         {/* Disclaimer */}
-        <div className="px-4 pb-1 pt-2 shrink-0">
+        <div className="bg-white/80 backdrop-blur-md px-4 pb-1 pt-2 shrink-0 z-10">
           <p className="text-[11px] text-gray-300 text-center max-w-2xl mx-auto leading-relaxed italic">
             Cet assistant peut commettre des erreurs. Veuillez toujours vous référer directement aux sources originales pour vérifier les informations.
           </p>
         </div>
 
         {/* Input */}
-        <div className="border-t border-gray-100 bg-white px-5 py-4 shrink-0">
+        <div className="border-t border-gray-100 bg-white/80 backdrop-blur-md px-5 py-4 shrink-0 z-10 shadow-[0_-1px_2px_rgba(0,0,0,0.02)]">
           <form
             onSubmit={handleSubmit}
             className="max-w-3xl mx-auto"
