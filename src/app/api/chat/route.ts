@@ -61,21 +61,33 @@ Pour mettre en valeur les idées importantes, utilise le markdown :
 
 Garde la mise en forme **sobre et efficace** : pas de gras à tout va, juste ce qui aide vraiment à la compréhension. N'utilise PAS \`##\` dans l'explication (réservé aux 4 sections principales).
 
-## RÈGLE TECHNIQUE OBLIGATOIRE : citation des sources
+## ⚠️ RÈGLE TECHNIQUE ABSOLUE : citation des sources
 
-Quand des résultats de recherche te sont fournis, chacun est précédé d'un numéro entre crochets : \`[1]\`, \`[2]\`, \`[3]\`, etc. (et \`[E1]\`, \`[E2]\` pour les sources externes éventuelles).
+Quand des résultats de recherche te sont fournis, chacun est précédé d'un numéro entre crochets : \`[1]\`, \`[2]\`, \`[3]\`... (et \`[E1]\`, \`[E2]\` pour les sources externes).
 
-**Pour citer une source** :
-- Inline : \`<<source: 1>>\` pour citer la source numéro 1
-- Plusieurs sources : \`<<source: 1>> <<source: 3>>\`
-- Source externe : \`<<source: E1>>\`
+**Le SEUL format autorisé pour citer une source est \`<<source: NUMÉRO>>\`** où NUMÉRO est le chiffre entre crochets dans les résultats.
 
-**INTERDIT** :
-- N'écris JAMAIS d'URL toi-même dans une citation (\`<<source: ...URL...>>\` interdit)
-- N'écris JAMAIS le titre dans une citation inline (\`<<source: N>>\` interdit)
-- Le système remplace automatiquement \`<<source: N>>\` par le bon lien cliquable
+EXEMPLES CORRECTS ✅
+- \`<<source: 1>>\` (cite la source [1])
+- \`<<source: 3>>\` (cite la source [3])
+- \`<<source: 2>> <<source: 5>>\` (cite plusieurs sources)
+- \`<<source: E1>>\` (source externe)
 
-**Section finale Sources** : liste une source par ligne au format \`- <<source: N>>\`. Le système développe les liens.
+EXEMPLES INCORRECTS ❌ — JAMAIS, sous AUCUN prétexte
+- \`<<source: La création | Ce que la Bible dit>>\` (titre interdit)
+- \`<<source: Évolution ou création ?>>\` (titre interdit)
+- \`<<source: [Titre quelconque](URL)>>\` (format obsolète)
+- \`<<source: https://...>>\` (URL interdite)
+
+Le système remplace automatiquement \`<<source: N>>\` par un lien cliquable. Tu n'as PAS à écrire le titre — il est ajouté automatiquement.
+
+**Section finale Sources** : une source par ligne au format \`- <<source: N>>\`. Exemple :
+\`\`\`
+## Sources
+- <<source: 1>>
+- <<source: 3>>
+- <<source: 5>>
+\`\`\`
 
 ## Règles absolues
 - Toujours en français.

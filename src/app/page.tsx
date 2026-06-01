@@ -760,25 +760,50 @@ function resolveSourceIds(
   sources: Record<string, { title: string; url: string; external: boolean }>
 ): string {
   if (!sources || Object.keys(sources).length === 0) return text;
-  // Match <<source: 1>>, <<source: E2>>, also tolerate <<source: 1, 2>> multi-ids
+  const allSources = Object.entries(sources).map(([id, s]) => ({ id, ...s }));
+
   return text.replace(/<<source:\s*([^>]+?)>>/g, (match, content: string) => {
-    // Skip if it's already resolved (contains [Title](URL))
-    if (content.includes("](") || content.includes("](http")) return match;
-    // Split on comma in case of multi-id citation
-    const ids = content
+    // Skip if already resolved (contains markdown link)
+    if (/\]\(https?:\/\//.test(content)) return match;
+
+    const trimmed = content.trim();
+
+    // Path 1 — IDs only ("1", "E2", "1, 3")
+    const tokens = trimmed
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
-    const resolved = ids
-      .map((id) => {
-        const src = sources[id];
-        if (!src) return null;
-        const externalTag = src.external ? " (source externe)" : "";
-        return `<<source: [${src.title}${externalTag}](${src.url})>>`;
-      })
-      .filter(Boolean);
-    if (resolved.length === 0) return ""; // drop unknown citations silently
-    return resolved.join(" ");
+    const allLookLikeIds = tokens.every((t) => /^E?\d+$/i.test(t));
+
+    if (allLookLikeIds) {
+      const resolved = tokens
+        .map((id) => sources[id])
+        .filter(Boolean)
+        .map((src) => {
+          const tag = src.external ? " (source externe)" : "";
+          return `<<source: [${src.title}${tag}](${src.url})>>`;
+        });
+      if (resolved.length > 0) return resolved.join(" ");
+      return ""; // drop unknown IDs
+    }
+
+    // Path 2 — LLM wrote the title instead of an ID. Try to match.
+    const lower = trimmed.toLowerCase();
+    let best = allSources.find((s) => s.title.toLowerCase() === lower);
+    if (!best) {
+      best = allSources.find(
+        (s) =>
+          s.title.toLowerCase().includes(lower) ||
+          lower.includes(s.title.toLowerCase())
+      );
+    }
+    if (best) {
+      const tag = best.external ? " (source externe)" : "";
+      return `<<source: [${best.title}${tag}](${best.url})>>`;
+    }
+
+    // Last resort — drop the malformed citation
+    return "";
   });
 }
 
@@ -848,18 +873,18 @@ function renderTextWithVerses(text: string) {
       );
     }
 
-    // Handle **bold**
+    // Handle **bold** — recurse so inner verses/sources stay clickable
     if (/^\*\*[^\n]+\*\*$/.test(part)) {
       return (
         <strong key={i} className="font-semibold text-[#3b3260]">
-          {part.slice(2, -2)}
+          {renderTextWithVerses(part.slice(2, -2))}
         </strong>
       );
     }
 
-    // Handle *italic*
+    // Handle *italic* — recurse for the same reason
     if (/^\*[^\n*]+\*$/.test(part)) {
-      return <em key={i}>{part.slice(1, -1)}</em>;
+      return <em key={i}>{renderTextWithVerses(part.slice(1, -1))}</em>;
     }
 
     return <span key={i}>{part}</span>;
