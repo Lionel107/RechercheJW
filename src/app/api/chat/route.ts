@@ -30,10 +30,10 @@ const SYSTEM_PROMPT = `Tu es un assistant bienveillant, intelligent et cultivé.
 
 Versets : utilise {{Livre chapitre:verset}} (ex: {{Jean 3:16}}). Le système les rend cliquables.
 
-Sources inline : à la fin de chaque paragraphe, ajoute <<source: [Titre](URL)>> pour chaque source utilisée. N'invente jamais d'URL.]
+Sources inline : à la fin de chaque paragraphe, ajoute <<source: N>> où N est le numéro de la source (voir RÈGLE TECHNIQUE plus bas).]
 
 ## Sources
-[Liste regroupée : - [Titre](URL). Si sources externes, sous-section "Sources externes".]
+[Liste regroupée, une source par ligne au format : - <<source: N>>. Le système développera automatiquement les liens.]
 
 ## Questions suggérées
 [2 à 4 questions pertinentes, seulement si ça apporte vraiment quelque chose.]
@@ -61,9 +61,25 @@ Pour mettre en valeur les idées importantes, utilise le markdown :
 
 Garde la mise en forme **sobre et efficace** : pas de gras à tout va, juste ce qui aide vraiment à la compréhension. N'utilise PAS \`##\` dans l'explication (réservé aux 4 sections principales).
 
+## RÈGLE TECHNIQUE OBLIGATOIRE : citation des sources
+
+Quand des résultats de recherche te sont fournis, chacun est précédé d'un numéro entre crochets : \`[1]\`, \`[2]\`, \`[3]\`, etc. (et \`[E1]\`, \`[E2]\` pour les sources externes éventuelles).
+
+**Pour citer une source** :
+- Inline : \`<<source: 1>>\` pour citer la source numéro 1
+- Plusieurs sources : \`<<source: 1>> <<source: 3>>\`
+- Source externe : \`<<source: E1>>\`
+
+**INTERDIT** :
+- N'écris JAMAIS d'URL toi-même dans une citation (\`<<source: ...URL...>>\` interdit)
+- N'écris JAMAIS le titre dans une citation inline (\`<<source: N>>\` interdit)
+- Le système remplace automatiquement \`<<source: N>>\` par le bon lien cliquable
+
+**Section finale Sources** : liste une source par ligne au format \`- <<source: N>>\`. Le système développe les liens.
+
 ## Règles absolues
 - Toujours en français.
-- N'invente jamais de lien.
+- N'invente jamais une URL. Utilise uniquement les numéros [N] fournis.
 - Clarté et pédagogie avant exhaustivité.`;
 
 const MODE_PROMPTS: Record<string, string> = {
@@ -92,7 +108,7 @@ Pour y arriver :
 
 **Cliquabilité (priorité 3, obligatoire)** :
 - Tout verset biblique : {{Livre chapitre:verset}} (ex : {{Jean 3:16}}). Sans exception.
-- Toute source d'article : <<source: [Titre](URL)>> inline + reprise dans la section \`## Sources\`.
+- Toute source d'article : <<source: N>> inline + reprise dans la section \`## Sources\`.
 - Jamais d'URL inventée.`,
 
   pratique: `
@@ -129,7 +145,7 @@ Dans les deux cas, le but est le même : **trouver des applications pratiques et
 
 **Cliquabilité (obligatoire)** :
 - Tout verset : {{Livre chapitre:verset}}
-- Toute source : <<source: [Titre](URL)>>
+- Toute source : <<source: N>>
 - Termine par une section \`## Sources\` si tu as cité des publications.`,
 
   apologetique: `
@@ -159,7 +175,7 @@ Dans les deux cas, le but est le même : **trouver des applications pratiques et
 
 **Cliquabilité (obligatoire)** :
 - Tout verset : {{Livre chapitre:verset}}
-- Toute source : <<source: [Titre](URL)>>
+- Toute source : <<source: N>>
 - Termine par une section \`## Sources\` regroupant tous les liens (avec une sous-section "Sources externes" si tu as utilisé des sources hors jw.org).`,
 
   perle: `
@@ -188,7 +204,7 @@ Format long assumé. Va jusqu'au bout, même si le chapitre est entier.
 
 **Cliquabilité (priorité 3, obligatoire)** :
 - Tous les versets — y compris dans les renvois — en {{Livre chapitre:verset}}. Sans exception.
-- Toutes les sources d'articles en <<source: [Titre](URL)>>.
+- Toutes les sources d'articles en <<source: N>>.
 - Jamais d'URL inventée.
 
 Pas de section "Questions suggérées" — l'analyse se suffit à elle-même.`,
@@ -505,6 +521,7 @@ export async function POST(req: NextRequest) {
 
     // Await Brave results only when needed
     let searchContext = "";
+    const allSources: { id: string; title: string; url: string; external: boolean }[] = [];
     if (defaultSearchPromise) {
       const [defaultResults, verseResults, externalResults] = await Promise.all([
         defaultSearchPromise,
@@ -522,13 +539,33 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // Build numbered sources list (single source of truth for citations)
+      mergedDefault.forEach((r, i) => {
+        allSources.push({
+          id: String(i + 1),
+          title: r.title,
+          url: r.url,
+          external: false,
+        });
+      });
+      if (wantsExternal) {
+        externalResults.forEach((r, i) => {
+          allSources.push({
+            id: `E${i + 1}`,
+            title: r.title,
+            url: r.url,
+            external: true,
+          });
+        });
+      }
+
       const defaultBlock =
         mergedDefault.length > 0
           ? `\n\nRésultats de recherche sur jw.org et wol.jw.org (SOURCES PRIORITAIRES)${verseRef ? ` — verset détecté : ${verseRef}, articles commentant ce verset inclus` : ""} :\n` +
             mergedDefault
               .map(
                 (r, i) =>
-                  `[${i + 1}] ${r.title}\nURL: ${r.url}\nExtrait: ${r.description}`
+                  `[${i + 1}] Titre: "${r.title}"\nURL: ${r.url}\nExtrait: ${r.description}`
               )
               .join("\n\n")
           : "\n\nAucun résultat pertinent trouvé sur jw.org ou wol.jw.org.";
@@ -540,7 +577,7 @@ export async function POST(req: NextRequest) {
           externalResults
             .map(
               (r, i) =>
-                `[E${i + 1}] [SOURCE EXTERNE] ${r.title}\nURL: ${r.url}\nExtrait: ${r.description}`
+                `[E${i + 1}] [SOURCE EXTERNE] Titre: "${r.title}"\nURL: ${r.url}\nExtrait: ${r.description}`
             )
             .join("\n\n");
       }
@@ -599,6 +636,14 @@ export async function POST(req: NextRequest) {
         const stream = new ReadableStream({
           async start(controller) {
             try {
+              // Send sources first so the client can resolve <<source: N>> citations
+              if (allSources.length > 0) {
+                controller.enqueue(
+                  encoder.encode(
+                    `data: ${JSON.stringify({ sources: allSources })}\n\n`
+                  )
+                );
+              }
               for await (const chunk of result.stream) {
                 const text = chunk.text();
                 if (text) {

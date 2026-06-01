@@ -270,6 +270,7 @@ export default function Home() {
 
       const decoder = new TextDecoder();
       let assistantContent = "";
+      let sourcesMap: Record<string, { title: string; url: string; external: boolean }> = {};
 
       setMessages([...newMessages, { role: "assistant", content: "" }]);
 
@@ -286,11 +287,23 @@ export default function Home() {
             if (data === "[DONE]") break;
             try {
               const parsed = JSON.parse(data);
+              if (parsed.sources && Array.isArray(parsed.sources)) {
+                // Build the ID -> source map
+                sourcesMap = {};
+                for (const s of parsed.sources) {
+                  sourcesMap[s.id] = {
+                    title: s.title,
+                    url: s.url,
+                    external: !!s.external,
+                  };
+                }
+              }
               if (parsed.text) {
                 assistantContent += parsed.text;
+                const resolved = resolveSourceIds(assistantContent, sourcesMap);
                 setMessages([
                   ...newMessages,
-                  { role: "assistant", content: assistantContent },
+                  { role: "assistant", content: resolved },
                 ]);
               }
             } catch {
@@ -299,6 +312,8 @@ export default function Home() {
           }
         }
       }
+      // Final resolution after streaming (in case last chunk had partial pattern)
+      assistantContent = resolveSourceIds(assistantContent, sourcesMap);
 
       const finalMessages = [
         ...newMessages,
@@ -738,6 +753,33 @@ function buildVerseUrl(reference: string): string | null {
   if (!bookNum) return null;
 
   return `https://wol.jw.org/fr/wol/b/r30/lp-f/nwtsty/${bookNum}/${chapter}#v${bookNum}:${chapter}:${verseStart}`;
+}
+
+function resolveSourceIds(
+  text: string,
+  sources: Record<string, { title: string; url: string; external: boolean }>
+): string {
+  if (!sources || Object.keys(sources).length === 0) return text;
+  // Match <<source: 1>>, <<source: E2>>, also tolerate <<source: 1, 2>> multi-ids
+  return text.replace(/<<source:\s*([^>]+?)>>/g, (match, content: string) => {
+    // Skip if it's already resolved (contains [Title](URL))
+    if (content.includes("](") || content.includes("](http")) return match;
+    // Split on comma in case of multi-id citation
+    const ids = content
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const resolved = ids
+      .map((id) => {
+        const src = sources[id];
+        if (!src) return null;
+        const externalTag = src.external ? " (source externe)" : "";
+        return `<<source: [${src.title}${externalTag}](${src.url})>>`;
+      })
+      .filter(Boolean);
+    if (resolved.length === 0) return ""; // drop unknown citations silently
+    return resolved.join(" ");
+  });
 }
 
 function renderTextWithVerses(text: string) {
