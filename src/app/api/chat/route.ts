@@ -88,28 +88,41 @@ const MODE_PROMPTS: Record<string, string> = {
   etude: `
 
 ## MODE ACTIF : ÉTUDE
-**Important** : ce mode REMPLACE le format à 4 sections décrit dans tes règles de base. Tu suis UNIQUEMENT les règles ci-dessous.
+**Important** : ce mode REMPLACE le format à 4 sections de tes règles de base. **Aucune structure imposée**.
 
-**Objectif (priorité 1)** : approfondir le sujet comme dans une vraie séance d'étude méticuleuse. L'utilisateur veut comprendre en profondeur, pas survoler.
+**OBJECTIF UNIQUE** : être un **outil de recherche supérieur à l'humain** pour trouver les ressources jw.org les plus adaptées à la question. Les résultats fournis ont été obtenus par une recherche itérative auto-améliorée (plusieurs tours, vocabulaire JW affiné). Ton rôle est de présenter les MEILLEURES ressources de manière organisée.
 
-Pour y arriver :
-- Mobilise plusieurs articles trouvés dans les résultats. Montre la diversité en croisant les angles.
-- Construis une réflexion tissée, pas une compilation. Relie les idées entre elles.
-- Va en profondeur sur chaque aspect important. Plusieurs paragraphes par idée si nécessaire.
-- Termine par une section \`## Questions suggérées\` avec 3-5 questions pour approfondir.
-- Si les résultats sont vides ou non pertinents : NE FABRIQUE PAS. Demande simplement à l'utilisateur de reformuler ou préciser sa question.
+**Comment y arriver** :
 
-**Lisibilité (priorité 2)** : le lecteur doit trouver les informations facilement dans ton texte.
-- Découpe ta réflexion avec des sous-titres \`###\` quand tu changes de sous-thème.
-- Mets en **gras** les notions et conclusions clés.
-- Utilise des listes à puces pour énumérer plusieurs points.
-- Aère le texte : paragraphes courts ou moyens.
-- Termine par une section \`## Sources\` regroupée.
+- **Analyse les résultats** comme un curateur professionnel. Tous ne se valent pas : certains traitent vraiment du sujet, d'autres ne font que l'évoquer.
 
-**Cliquabilité (priorité 3, obligatoire)** :
-- Tout verset biblique : {{Livre chapitre:verset}} (ex : {{Jean 3:16}}). Sans exception.
-- Toute source d'article : <<source: N>> inline + reprise dans la section \`## Sources\`.
-- Jamais d'URL inventée.`,
+- **Garde les meilleures** (5 à 10 ressources max), pas tout ce qui a été trouvé. Mieux vaut peu de bonnes ressources que beaucoup de pertinence moyenne.
+
+- **Catégorise les ressources** selon leur nature et leur utilité :
+  - Articles d'étude approfondis (Tour de Garde éd. étude, chapitres de livres)
+  - Articles introductifs ou pratiques (Réveillez-vous, brochures)
+  - Vidéos (si trouvées via URL pattern /videos/)
+  - Index biblique (rsg19) si verset détecté
+  - Discours ou transcriptions
+
+- **Pour chaque ressource gardée, explique en 1 ligne pourquoi elle est utile** sur ce sujet précis. L'utilisateur doit savoir où cliquer en premier.
+
+- **Suggère un parcours de lecture** si plusieurs ressources se complètent : "Commencer par X, puis Y pour approfondir, et Z pour l'application pratique."
+
+- **Si les résultats ne sont pas pertinents** ou trop pauvres : ne fabrique rien. Demande simplement à l'utilisateur de reformuler ou préciser sa question.
+
+**Présentation suggérée** (mais libre selon le cas) :
+- Une phrase d'introduction sur le sujet (1-2 phrases max)
+- Les ressources organisées par catégorie/objectif
+- Pour chaque ressource : titre cliquable via \`<<source: N>>\` + 1 ligne d'explication
+- Éventuellement une suggestion d'ordre de lecture
+
+**Tu n'es PAS un synthétiseur de contenu**. Tu ne résumes pas les articles à la place de l'utilisateur. Tu lui présentes les BONNES sources pour qu'il aille les lire lui-même.
+
+**Cliquabilité (obligatoire)** :
+- Versets : {{Livre chapitre:verset}}
+- Chaque ressource présentée : \`<<source: N>>\` (le système développera le lien)
+- Termine par une section \`## Sources\` qui liste toutes les ressources (\`- <<source: N>>\` une par ligne)`,
 
   pratique: `
 
@@ -251,6 +264,91 @@ async function searchCascade(queries: string[]): Promise<BraveResult[]> {
     }
   }
   return allResults.slice(0, 15);
+}
+
+// Extract JW-specific vocabulary from search result titles
+async function extractJWTermsFromResults(
+  question: string,
+  results: BraveResult[]
+): Promise<string[]> {
+  if (results.length === 0) return [];
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+    const titles = results
+      .slice(0, 10)
+      .map((r, i) => `${i + 1}. ${r.title}`)
+      .join("\n");
+    const prompt = `Question de l'utilisateur : "${question}"
+
+Voici les titres des résultats trouvés sur jw.org :
+${titles}
+
+Identifie 2-3 termes ou expressions du VOCABULAIRE JW spécifiques (utilisés dans les publications) qui pourraient aider à mieux chercher sur ce sujet. Privilégie les termes que les publications jw.org utilisent VRAIMENT et qui ne sont pas dans la question originale.
+
+Réponds UNIQUEMENT par les termes séparés par | (pas de phrase, pas d'explication, pas de préambule).
+Exemple : intégrité | endurer | esprit saint`;
+
+    const result = await model.generateContent(prompt);
+    const text = result.response.text().trim();
+    return text
+      .split("|")
+      .map((s) => s.trim().replace(/^[-*\d.]\s*/, ""))
+      .filter((s) => s.length > 0 && s.length < 60)
+      .slice(0, 3);
+  } catch {
+    return [];
+  }
+}
+
+// Iterative auto-improving search for the Étude mode.
+// Tour 1: reformulated queries → broad search
+// Analysis: detect JW-specific terms that appeared in the results
+// Tour 2: refined queries combining original + JW terms
+// Merge all unique results
+async function iterativeSearch(question: string): Promise<BraveResult[]> {
+  // Tour 1: get reformulated queries and search in parallel
+  const initialQueries = await reformulateQuery(question);
+  const tour1 = await Promise.all(
+    initialQueries.map((q) => searchBrave(q).catch(() => [] as BraveResult[]))
+  );
+
+  // Merge tour 1
+  const seenUrls = new Set<string>();
+  const merged: BraveResult[] = [];
+  for (const resultSet of tour1) {
+    for (const r of resultSet) {
+      if (!seenUrls.has(r.url)) {
+        merged.push(r);
+        seenUrls.add(r.url);
+      }
+    }
+  }
+
+  // If tour 1 returned enough, do a refinement tour with JW vocabulary detected
+  if (merged.length >= 3) {
+    const jwTerms = await extractJWTermsFromResults(question, merged);
+    if (jwTerms.length > 0) {
+      // Limit Brave query length safely
+      const refinedQueries = jwTerms
+        .map((term) => `${question} ${term}`.slice(0, 300))
+        .slice(0, 2);
+      const tour2 = await Promise.all(
+        refinedQueries.map((q) =>
+          searchBrave(q).catch(() => [] as BraveResult[])
+        )
+      );
+      for (const resultSet of tour2) {
+        for (const r of resultSet) {
+          if (!seenUrls.has(r.url)) {
+            merged.push(r);
+            seenUrls.add(r.url);
+          }
+        }
+      }
+    }
+  }
+
+  return merged.slice(0, 20);
 }
 
 interface BraveResult {
@@ -478,15 +576,25 @@ export async function POST(req: NextRequest) {
     const useCascade =
       doSearch && ["etude", "apologetique", "perle"].includes(mode);
 
-    // Get queries (reformulated if mode supports it)
+    // Get queries (reformulated if mode supports it).
+    // Étude uses iterative search (handles reformulation internally), other modes
+    // can use it manually.
     let queries: string[] = [message];
-    if (useReformulation) {
+    if (useReformulation && mode !== "etude") {
       queries = await reformulateQuery(message);
     }
 
-    // Launch searches in parallel
+    // Launch searches in parallel.
+    // - Étude mode : recherche itérative auto-améliorée (2 tours)
+    // - Modes avec cascade (Apologétique, Perle) : recherche en cascade
+    // - Autres modes (Pratique, Discussion) : recherche simple
     const defaultSearchPromise = doSearch
-      ? (useCascade
+      ? (mode === "etude"
+          ? iterativeSearch(message).catch((err) => {
+              console.error("Brave Iterative Search failed:", err);
+              return [] as BraveResult[];
+            })
+          : useCascade
           ? searchCascade(queries).catch((err) => {
               console.error("Brave Cascade Search failed:", err);
               return [] as BraveResult[];
