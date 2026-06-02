@@ -19,6 +19,47 @@ const MODE_KEY = "jw-assistant-mode";
 
 type Mode = "default" | "etude" | "pratique" | "apologetique" | "perle";
 
+// Minimalist outline icons (24x24, strokeWidth 1.75)
+function ModeIcon({ mode, className = "w-4 h-4" }: { mode: Mode; className?: string }) {
+  const stroke = 1.75;
+  switch (mode) {
+    case "default":
+      return (
+        <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+        </svg>
+      );
+    case "etude":
+      return (
+        <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+        </svg>
+      );
+    case "pratique":
+      return (
+        <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <circle cx="12" cy="12" r="6" />
+          <circle cx="12" cy="12" r="2" />
+        </svg>
+      );
+    case "apologetique":
+      return (
+        <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 2l8 3v6c0 5-3.5 9.5-8 11-4.5-1.5-8-6-8-11V5l8-3z" />
+          <path d="M9 12l2 2 4-4" />
+        </svg>
+      );
+    case "perle":
+      return (
+        <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 3l2.5 6 6.5.5-5 4.5 1.5 6.5L12 17l-5.5 3.5L8 14l-5-4.5 6.5-.5L12 3z" />
+        </svg>
+      );
+  }
+}
+
 const MODES: { id: Mode; label: string; description: string }[] = [
   { id: "default", label: "Discussion", description: "Dialogue libre" },
   { id: "etude", label: "Étude", description: "Réflexion approfondie sur un sujet" },
@@ -413,10 +454,10 @@ export default function Home() {
                 <div
                   key={conv.id}
                   onClick={() => openConversation(conv)}
-                  className={`group flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer text-sm transition-all ${
+                  className={`group flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer text-sm transition-all duration-200 ${
                     activeId === conv.id
                       ? "bg-white/15 text-white"
-                      : "text-white/50 hover:bg-white/8 hover:text-white/70"
+                      : "text-white/50 hover:bg-white/10 hover:text-white/90 hover:translate-x-0.5"
                   }`}
                 >
                   <svg
@@ -552,20 +593,27 @@ export default function Home() {
         {/* Mode selector */}
         <div className="bg-white/80 backdrop-blur-md border-b border-gray-100 px-3 py-2 shrink-0 z-10">
           <div className="flex gap-1.5 overflow-x-auto scrollbar-hide max-w-full">
-            {MODES.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => changeMode(m.id)}
-                title={m.description}
-                className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                  mode === m.id
-                    ? "bg-[#3b3260] text-white shadow-sm"
-                    : "bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-[#3b3260]"
-                }`}
-              >
-                {m.label}
-              </button>
-            ))}
+            {MODES.map((m) => {
+              const active = mode === m.id;
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => changeMode(m.id)}
+                  title={m.description}
+                  className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
+                    active
+                      ? "bg-[#3b3260] text-white shadow-[0_2px_8px_rgba(59,50,96,0.25)]"
+                      : "bg-gray-50 text-gray-500 hover:bg-[#3b3260]/8 hover:text-[#3b3260] hover:scale-[1.03]"
+                  }`}
+                >
+                  <ModeIcon
+                    mode={m.id}
+                    className={`w-3.5 h-3.5 transition-opacity ${active ? "opacity-100" : "opacity-70"}`}
+                  />
+                  {m.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -591,11 +639,12 @@ export default function Home() {
               <h2 className="text-2xl font-semibold text-[#3b3260] mb-2 tracking-tight">
                 Posez votre question
               </h2>
-              <p className="text-gray-400 max-w-sm leading-relaxed text-sm">
+              <p key={`desc-${mode}`} className="mode-fade text-gray-400 max-w-sm leading-relaxed text-sm">
                 {MODES.find((m) => m.id === mode)?.description ??
                   "Je recherche les informations sur jw.org et wol.jw.org pour vous fournir des réponses précises et sourcées."}
               </p>
-              <p className="mt-3 text-[10px] uppercase tracking-[0.2em] text-[#3b3260]/60">
+              <p key={`mode-${mode}`} className="mode-fade mt-3 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.2em] text-[#3b3260]/70">
+                <ModeIcon mode={mode} className="w-3 h-3" />
                 Mode : {MODES.find((m) => m.id === mode)?.label}
               </p>
             </div>
@@ -705,7 +754,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="p-3 rounded-xl border border-gray-200 bg-gray-50 text-gray-400 hover:text-[#3b3260] hover:border-[#3b3260]/30 transition-all"
+                className="p-3 rounded-xl border border-gray-200 bg-gray-50 text-gray-400 hover:text-[#3b3260] hover:border-[#3b3260]/30 hover:bg-[#3b3260]/5 hover:scale-105 transition-all duration-200"
                 disabled={isLoading}
                 title="Ajouter une image"
               >
@@ -741,7 +790,7 @@ export default function Home() {
               <button
                 type="submit"
                 disabled={isLoading || (!input.trim() && !selectedImage)}
-                className="bg-[#3b3260] text-white rounded-xl px-4 py-3 font-medium hover:bg-[#4a4170] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                className="bg-[#3b3260] text-white rounded-xl px-4 py-3 font-medium hover:bg-[#4a4170] hover:shadow-[0_4px_16px_rgba(59,50,96,0.35)] hover:scale-105 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-none transition-all duration-200"
               >
                 <svg
                   className="w-5 h-5"
@@ -974,7 +1023,7 @@ function renderTextWithVerses(text: string) {
           href={url || `https://wol.jw.org/fr/wol/s/r30/lp-f?q=${encodeURIComponent(ref)}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-[#3b3260] font-medium underline decoration-purple-300 underline-offset-2 hover:decoration-[#3b3260] transition-colors"
+          className="inline-flex items-center gap-1 mx-0.5 px-2 py-px rounded-md text-[0.92em] font-medium text-[#3b3260] bg-[#3b3260]/8 hover:bg-[#3b3260]/15 hover:-translate-y-px transition-all duration-150 align-baseline"
         >
           {ref}
         </a>
@@ -1148,8 +1197,9 @@ function AssistantMessage({
             .map((l) => l.replace(/^[-*\d.]\s*/, "").trim())
             .filter(Boolean);
           return (
-            <div key={i} className="pt-2 border-t border-gray-100">
-              <h3 className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.15em] mb-3">
+            <div key={i} className="pt-3 border-t border-gray-100">
+              <h3 className="flex items-center gap-2 text-[10px] font-semibold text-[#3b3260]/70 uppercase tracking-[0.18em] mb-3">
+                <span className="block w-1 h-3 rounded-full bg-[#3b3260]/35" />
                 {title}
               </h3>
               <div className="flex flex-wrap gap-2">
@@ -1157,7 +1207,7 @@ function AssistantMessage({
                   <button
                     key={j}
                     onClick={() => onSuggestedQuestion(q)}
-                    className="text-sm text-[#3b3260] bg-gray-50 hover:bg-[#3b3260] hover:text-white rounded-lg px-3.5 py-2 text-left transition-all border border-gray-100 hover:border-[#3b3260]"
+                    className="text-sm text-[#3b3260] bg-gray-50 hover:bg-[#3b3260] hover:text-white rounded-lg px-3.5 py-2 text-left transition-all duration-200 border border-gray-100 hover:border-[#3b3260] hover:-translate-y-px hover:shadow-[0_4px_12px_rgba(59,50,96,0.18)]"
                   >
                     {q}
                   </button>
@@ -1187,7 +1237,7 @@ function AssistantMessage({
                         href={match[2]}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-2.5 text-sm text-[#3b3260]/70 hover:text-[#3b3260] transition-colors group"
+                        className="flex items-center gap-2.5 text-sm text-[#3b3260]/70 hover:text-[#3b3260] hover:translate-x-0.5 transition-all duration-200 group"
                       >
                         <svg
                           className="w-4 h-4 shrink-0 opacity-40 group-hover:opacity-100 transition-opacity"
@@ -1215,7 +1265,7 @@ function AssistantMessage({
                         href={urlMatch[1]}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-2.5 text-sm text-[#3b3260]/70 hover:text-[#3b3260] transition-colors group"
+                        className="flex items-center gap-2.5 text-sm text-[#3b3260]/70 hover:text-[#3b3260] hover:translate-x-0.5 transition-all duration-200 group"
                       >
                         <svg
                           className="w-4 h-4 shrink-0 opacity-40 group-hover:opacity-100 transition-opacity"
@@ -1247,7 +1297,8 @@ function AssistantMessage({
 
         return (
           <div key={i}>
-            <h3 className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.15em] mb-2">
+            <h3 className="flex items-center gap-2 text-[10px] font-semibold text-[#3b3260]/70 uppercase tracking-[0.18em] mb-2.5">
+              <span className="block w-1 h-3 rounded-full bg-[#3b3260]/35" />
               {title}
             </h3>
             <div className="text-sm text-gray-600">
