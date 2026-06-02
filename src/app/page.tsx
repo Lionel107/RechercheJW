@@ -794,41 +794,44 @@ function normalizeBookName(raw: string): string {
     .replace(/[̀-ͯ]/g, ""); // strip diacritics (é → e, è → e, ç → c, etc.)
 }
 
-function buildVerseUrl(reference: string): string | null {
-  // Accept ":", ",", "." as chapter:verse separator. Accept "-" or "–" for range.
-  const match = reference.match(
-    /^(.+?)\s+(\d+)\s*[:,.]\s*(\d+)(?:\s*[-–]\s*(\d+))?$/
-  );
-  if (!match) return null;
-
-  const rawBookName = match[1];
-  const chapter = match[2];
-  const verseStart = match[3];
-
-  // Try to resolve the book number through multiple strategies
+function resolveBookNumber(rawBookName: string): number | null {
   const normalized = normalizeBookName(rawBookName);
 
   // 1. Exact match against normalized BIBLE_BOOKS keys
   for (const [key, num] of Object.entries(BIBLE_BOOKS)) {
-    if (normalizeBookName(key) === normalized) {
-      return `https://wol.jw.org/fr/wol/b/r30/lp-f/nwtsty/${num}/${chapter}#v${num}:${chapter}:${verseStart}`;
-    }
+    if (normalizeBookName(key) === normalized) return num;
   }
 
   // 2. Common abbreviations (no spaces)
   const noSpace = normalized.replace(/\s/g, "");
-  if (BIBLE_ABBREV[noSpace]) {
-    const num = BIBLE_ABBREV[noSpace];
-    return `https://wol.jw.org/fr/wol/b/r30/lp-f/nwtsty/${num}/${chapter}#v${num}:${chapter}:${verseStart}`;
-  }
+  if (BIBLE_ABBREV[noSpace]) return BIBLE_ABBREV[noSpace];
 
-  // 3. Abbreviations with space (e.g., "1 co" → "1co")
-  if (BIBLE_ABBREV[normalized]) {
-    const num = BIBLE_ABBREV[normalized];
-    return `https://wol.jw.org/fr/wol/b/r30/lp-f/nwtsty/${num}/${chapter}#v${num}:${chapter}:${verseStart}`;
-  }
+  // 3. Abbreviations with space (e.g., "1 co")
+  if (BIBLE_ABBREV[normalized]) return BIBLE_ABBREV[normalized];
 
   return null;
+}
+
+function buildVerseUrl(reference: string): string | null {
+  // Permissive regex: "Book Chap:Verses" where Verses can be a list like
+  // "12", "12-15", "12, 21, 24-26", etc. We extract the FIRST verse number
+  // to build the anchor URL.
+  const match = reference.match(/^(.+?)\s+(\d+)\s*[:,.]\s*(.+?)$/);
+  if (!match) return null;
+
+  const rawBookName = match[1];
+  const chapter = match[2];
+  const verseList = match[3];
+
+  // First verse number in the verse list (the anchor target)
+  const firstVerseMatch = verseList.match(/^\s*(\d+)/);
+  if (!firstVerseMatch) return null;
+  const verseStart = firstVerseMatch[1];
+
+  const bookNum = resolveBookNumber(rawBookName);
+  if (!bookNum) return null;
+
+  return `https://wol.jw.org/fr/wol/b/r30/lp-f/nwtsty/${bookNum}/${chapter}#v${bookNum}:${chapter}:${verseStart}`;
 }
 
 function resolveSourceIds(
