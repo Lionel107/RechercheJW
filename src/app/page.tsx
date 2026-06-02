@@ -103,6 +103,9 @@ export default function Home() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("default");
   const [showScrollDown, setShowScrollDown] = useState(false);
+  const [editingFromIndex, setEditingFromIndex] = useState<number | null>(null);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -284,18 +287,20 @@ export default function Home() {
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const trimmed = input.trim();
-    if (!trimmed || isLoading) return;
-
+  // Core function that sends a message given a prefix (history before the user message).
+  // Used by both handleSubmit, regenerate, and edit/resend.
+  async function sendMessage(
+    messageText: string,
+    historyPrefix: Message[],
+    imageData: string | null
+  ) {
     let currentId = activeId;
     let currentConvs = conversations;
     if (!currentId) {
       const id = Date.now().toString();
       const newConv: Conversation = {
         id,
-        title: trimmed.slice(0, 50),
+        title: messageText.slice(0, 50),
         messages: [],
         updatedAt: Date.now(),
       };
@@ -306,21 +311,29 @@ export default function Home() {
       setActiveId(id);
     }
 
-    const userMessage: Message = { role: "user", content: trimmed };
-    const newMessages = [...messages, userMessage];
+    const userMessage: Message = { role: "user", content: messageText };
+    const newMessages = [...historyPrefix, userMessage];
     setMessages(newMessages);
-    setInput("");
-    setSelectedImage(null);
     setIsLoading(true);
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    let assistantContent = "";
+    let sourcesMap: Record<
+      string,
+      { title: string; url: string; external: boolean }
+    > = {};
 
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
+        signal: controller.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: trimmed,
-          history: messages,
-          image: selectedImage || undefined,
+          message: messageText,
+          history: historyPrefix,
+          image: imageData || undefined,
           mode,
         }),
       });
@@ -331,9 +344,6 @@ export default function Home() {
       if (!reader) throw new Error("Pas de stream");
 
       const decoder = new TextDecoder();
-      let assistantContent = "";
-      let sourcesMap: Record<string, { title: string; url: string; external: boolean }> = {};
-
       setMessages([...newMessages, { role: "assistant", content: "" }]);
 
       while (true) {
@@ -350,7 +360,6 @@ export default function Home() {
             try {
               const parsed = JSON.parse(data);
               if (parsed.sources && Array.isArray(parsed.sources)) {
-                // Build the ID -> source map
                 sourcesMap = {};
                 for (const s of parsed.sources) {
                   sourcesMap[s.id] = {
@@ -374,7 +383,6 @@ export default function Home() {
           }
         }
       }
-      // Final resolution after streaming (in case last chunk had partial pattern)
       assistantContent = resolveSourceIds(assistantContent, sourcesMap);
 
       const finalMessages = [
@@ -383,7 +391,28 @@ export default function Home() {
       ];
       setMessages(finalMessages);
       persistMessages(currentId, finalMessages, currentConvs);
-    } catch {
+    } catch (err: unknown) {
+      // User cancelled : keep partial response if any
+      if ((err as Error)?.name === "AbortError") {
+        const resolvedPartial = resolveSourceIds(assistantContent, sourcesMap);
+        if (resolvedPartial.trim().length > 0) {
+          const partialMessages: Message[] = [
+            ...newMessages,
+            {
+              role: "assistant",
+              content: resolvedPartial + "\n\n*(Génération interrompue)*",
+            },
+          ];
+          setMessages(partialMessages);
+          persistMessages(currentId, partialMessages, currentConvs);
+        } else {
+          // Nothing generated, just keep the user message
+          setMessages(newMessages);
+          persistMessages(currentId, newMessages, currentConvs);
+        }
+        return;
+      }
+      // Real error
       const errorMessages: Message[] = [
         ...newMessages,
         {
@@ -395,7 +424,71 @@ export default function Home() {
       persistMessages(currentId, errorMessages, currentConvs);
     } finally {
       setIsLoading(false);
+      abortControllerRef.current = null;
     }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = input.trim();
+    if (!trimmed || isLoading) return;
+
+    // If editing a previous message, truncate history from that index
+    const prefix =
+      editingFromIndex !== null
+        ? messages.slice(0, editingFromIndex)
+        : messages;
+
+    setInput("");
+    setSelectedImage(null);
+    setEditingFromIndex(null);
+
+    await sendMessage(trimmed, prefix, selectedImage);
+  }
+
+  function stopGeneration() {
+    abortControllerRef.current?.abort();
+  }
+
+  async function copyMessage(index: number) {
+    const msg = messages[index];
+    if (!msg) return;
+    try {
+      await navigator.clipboard.writeText(msg.content);
+      setCopiedIndex(index);
+      setTimeout(() => setCopiedIndex(null), 1800);
+    } catch {
+      // fallback / no-op
+    }
+  }
+
+  function startEditing(index: number) {
+    const msg = messages[index];
+    if (!msg || msg.role !== "user") return;
+    setInput(msg.content);
+    setEditingFromIndex(index);
+    setTimeout(() => textareaRef.current?.focus(), 30);
+  }
+
+  function cancelEditing() {
+    setEditingFromIndex(null);
+    setInput("");
+  }
+
+  async function regenerateLastResponse() {
+    if (isLoading) return;
+    // Find last user message
+    let lastUserIdx = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "user") {
+        lastUserIdx = i;
+        break;
+      }
+    }
+    if (lastUserIdx === -1) return;
+    const userMsg = messages[lastUserIdx];
+    const prefix = messages.slice(0, lastUserIdx);
+    await sendMessage(userMsg.content, prefix, null);
   }
 
   function handleSuggestedQuestion(question: string) {
@@ -652,26 +745,76 @@ export default function Home() {
             <div className="max-w-4xl mx-auto space-y-6">
               {messages.map((msg, i) => {
                 const isLast = i === messages.length - 1;
+                const isUser = msg.role === "user";
+                const isCopied = copiedIndex === i;
+                const isLastAssistant =
+                  !isUser && isLast && !isLoading;
                 return (
                 <div
                   key={i}
                   ref={isLast ? lastMessageRef : undefined}
-                  className={`flex message-enter ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                  className={`message-enter flex flex-col ${isUser ? "items-end" : "items-stretch"}`}
                 >
                   <div
                     className={`rounded-3xl px-6 py-4 ${
-                      msg.role === "user"
+                      isUser
                         ? "max-w-[85%] bg-gradient-to-br from-[#3b3260] to-[#4a4170] text-white/95 shadow-[0_4px_18px_rgba(59,50,96,0.22),0_1px_2px_rgba(59,50,96,0.08)]"
                         : "w-full bg-white text-gray-700 shadow-[0_1px_2px_rgba(59,50,96,0.04),0_8px_28px_rgba(59,50,96,0.06)]"
                     }`}
                   >
-                    {msg.role === "assistant" ? (
+                    {isUser ? (
+                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                    ) : (
                       <AssistantMessage
                         content={msg.content}
                         onSuggestedQuestion={handleSuggestedQuestion}
                       />
-                    ) : (
-                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                    )}
+                  </div>
+                  {/* Message actions toolbar */}
+                  <div
+                    className={`flex items-center gap-1 mt-1.5 ${isUser ? "justify-end pr-1" : "justify-start pl-1"}`}
+                  >
+                    <button
+                      onClick={() => copyMessage(i)}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-gray-400 hover:text-[#3b3260] hover:bg-[#3b3260]/8 transition-all duration-150"
+                      title="Copier"
+                    >
+                      {isCopied ? (
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : (
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+                          <rect x="9" y="9" width="13" height="13" rx="2" />
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                      )}
+                      <span>{isCopied ? "Copié" : "Copier"}</span>
+                    </button>
+                    {isUser && !isLoading && (
+                      <button
+                        onClick={() => startEditing(i)}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-gray-400 hover:text-[#3b3260] hover:bg-[#3b3260]/8 transition-all duration-150"
+                        title="Modifier"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5m-1.414-9.414a2 2 0 1 1 2.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        <span>Modifier</span>
+                      </button>
+                    )}
+                    {isLastAssistant && (
+                      <button
+                        onClick={regenerateLastResponse}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-gray-400 hover:text-[#3b3260] hover:bg-[#3b3260]/8 transition-all duration-150"
+                        title="Régénérer"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v6h6M20 20v-6h-6M4 10a8 8 0 0 1 13.66-3.66L20 9M20 14a8 8 0 0 1-13.66 3.66L4 15" />
+                        </svg>
+                        <span>Régénérer</span>
+                      </button>
                     )}
                   </div>
                 </div>
@@ -727,6 +870,23 @@ export default function Home() {
             onSubmit={handleSubmit}
             className="max-w-4xl mx-auto"
           >
+            {editingFromIndex !== null && (
+              <div className="mb-2 flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[#3b3260]/8 text-[#3b3260]">
+                <span className="text-xs flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5m-1.414-9.414a2 2 0 1 1 2.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  Modification du message — les réponses suivantes seront supprimées
+                </span>
+                <button
+                  type="button"
+                  onClick={cancelEditing}
+                  className="text-xs text-[#3b3260] hover:underline shrink-0"
+                >
+                  Annuler
+                </button>
+              </div>
+            )}
             {selectedImage && (
               <div className="mb-2 relative inline-block">
                 <img
@@ -787,25 +947,42 @@ export default function Home() {
                 rows={1}
                 className="flex-1 resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-[#3b3260] placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#3b3260]/20 focus:border-[#3b3260]/30 focus:bg-white transition-all"
               />
-              <button
-                type="submit"
-                disabled={isLoading || (!input.trim() && !selectedImage)}
-                className="bg-[#3b3260] text-white rounded-xl px-4 py-3 font-medium hover:bg-[#4a4170] hover:shadow-[0_4px_16px_rgba(59,50,96,0.35)] hover:scale-105 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-none transition-all duration-200"
-              >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+              {isLoading ? (
+                <button
+                  type="button"
+                  onClick={stopGeneration}
+                  className="bg-[#3b3260] text-white rounded-xl px-4 py-3 font-medium hover:bg-[#4a4170] hover:shadow-[0_4px_16px_rgba(59,50,96,0.35)] hover:scale-105 transition-all duration-200"
+                  title="Arrêter la génération"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                  />
-                </svg>
-              </button>
+                  <svg
+                    className="w-5 h-5"
+                    fill="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <rect x="6" y="6" width="12" height="12" rx="2" />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!input.trim() && !selectedImage}
+                  className="bg-[#3b3260] text-white rounded-xl px-4 py-3 font-medium hover:bg-[#4a4170] hover:shadow-[0_4px_16px_rgba(59,50,96,0.35)] hover:scale-105 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-none transition-all duration-200"
+                >
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                    />
+                  </svg>
+                </button>
+              )}
             </div>
           </form>
         </div>
