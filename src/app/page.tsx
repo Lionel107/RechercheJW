@@ -741,18 +741,94 @@ const BIBLE_BOOKS: Record<string, number> = {
   "jude": 65, "révélation": 66, "apocalypse": 66,
 };
 
+// Common abbreviations used by Gemini and other LLMs
+const BIBLE_ABBREV: Record<string, number> = {
+  "gn": 1, "ge": 1, "gen": 1,
+  "ex": 2, "exo": 2,
+  "lv": 3, "lev": 3,
+  "nb": 4, "nbr": 4, "nbs": 4, "nu": 4, "nm": 4,
+  "dt": 5, "deut": 5, "deu": 5,
+  "jos": 6, "jg": 7, "rt": 8,
+  "1s": 9, "1sa": 9, "1sam": 9,
+  "2s": 10, "2sa": 10, "2sam": 10,
+  "1r": 11, "1ro": 11, "2r": 12, "2ro": 12,
+  "1ch": 13, "1chr": 13, "2ch": 14, "2chr": 14,
+  "esd": 15, "ne": 16, "neh": 16, "est": 17,
+  "ps": 19, "pr": 20, "prov": 20, "ec": 21, "eccl": 21, "ct": 22, "cant": 22,
+  "is": 23, "isa": 23, "es": 23, "esa": 23,
+  "jr": 24, "jer": 24, "lam": 25, "ez": 26, "eze": 26, "ezk": 26,
+  "dn": 27, "dan": 27,
+  "os": 28, "ose": 28, "jl": 29, "joel": 29, "am": 30,
+  "ab": 31, "jon": 32, "mi": 33, "mic": 33,
+  "na": 34, "nah": 34, "ha": 35, "hab": 35, "so": 36, "soph": 36,
+  "ag": 37, "ag2": 37, "za": 38, "zac": 38, "ml": 39, "mal": 39,
+  "mt": 40, "mat": 40, "matt": 40,
+  "mc": 41, "mr": 41, "mar": 41,
+  "lc": 42, "lu": 42, "luc": 42,
+  "jn": 43, "jean": 43,
+  "ac": 44, "act": 44, "actes": 44,
+  "rm": 45, "rom": 45,
+  "1co": 46, "1cor": 46, "2co": 47, "2cor": 47,
+  "ga": 48, "gal": 48,
+  "ep": 49, "eph": 49,
+  "ph": 50, "phil": 50, "phl": 50,
+  "col": 51,
+  "1th": 52, "1thes": 52, "2th": 53, "2thes": 53,
+  "1tm": 54, "1tim": 54, "2tm": 55, "2tim": 55,
+  "tt": 56, "tit": 56,
+  "phm": 57, "phlm": 57,
+  "he": 58, "heb": 58,
+  "jc": 59, "jac": 59, "jas": 59,
+  "1p": 60, "1pi": 60, "1pe": 60, "2p": 61, "2pi": 61, "2pe": 61,
+  "1jn": 62, "2jn": 63, "3jn": 64,
+  "jud": 65, "jude": 65,
+  "ap": 66, "apo": 66, "apoc": 66, "re": 66, "rev": 66, "rev2": 66,
+};
+
+function normalizeBookName(raw: string): string {
+  return raw
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, ""); // strip diacritics (é → e, è → e, ç → c, etc.)
+}
+
 function buildVerseUrl(reference: string): string | null {
-  const match = reference.match(/^(.+?)\s+(\d+):(\d+)(?:-(\d+))?$/);
+  // Accept ":", ",", "." as chapter:verse separator. Accept "-" or "–" for range.
+  const match = reference.match(
+    /^(.+?)\s+(\d+)\s*[:,.]\s*(\d+)(?:\s*[-–]\s*(\d+))?$/
+  );
   if (!match) return null;
 
-  const bookName = match[1].toLowerCase().trim();
+  const rawBookName = match[1];
   const chapter = match[2];
   const verseStart = match[3];
-  const bookNum = BIBLE_BOOKS[bookName];
 
-  if (!bookNum) return null;
+  // Try to resolve the book number through multiple strategies
+  const normalized = normalizeBookName(rawBookName);
 
-  return `https://wol.jw.org/fr/wol/b/r30/lp-f/nwtsty/${bookNum}/${chapter}#v${bookNum}:${chapter}:${verseStart}`;
+  // 1. Exact match against normalized BIBLE_BOOKS keys
+  for (const [key, num] of Object.entries(BIBLE_BOOKS)) {
+    if (normalizeBookName(key) === normalized) {
+      return `https://wol.jw.org/fr/wol/b/r30/lp-f/nwtsty/${num}/${chapter}#v${num}:${chapter}:${verseStart}`;
+    }
+  }
+
+  // 2. Common abbreviations (no spaces)
+  const noSpace = normalized.replace(/\s/g, "");
+  if (BIBLE_ABBREV[noSpace]) {
+    const num = BIBLE_ABBREV[noSpace];
+    return `https://wol.jw.org/fr/wol/b/r30/lp-f/nwtsty/${num}/${chapter}#v${num}:${chapter}:${verseStart}`;
+  }
+
+  // 3. Abbreviations with space (e.g., "1 co" → "1co")
+  if (BIBLE_ABBREV[normalized]) {
+    const num = BIBLE_ABBREV[normalized];
+    return `https://wol.jw.org/fr/wol/b/r30/lp-f/nwtsty/${num}/${chapter}#v${num}:${chapter}:${verseStart}`;
+  }
+
+  return null;
 }
 
 function resolveSourceIds(
