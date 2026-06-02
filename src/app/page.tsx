@@ -586,7 +586,7 @@ export default function Home() {
                   <div className="flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all">
                     <button
                       onClick={(e) => startRenaming(conv.id, conv.title, e)}
-                      className="p-1 hover:text-white transition-all"
+                      className="p-2 -m-1 rounded-md hover:text-white active:bg-white/10 transition-all"
                       title="Renommer"
                     >
                       <svg
@@ -605,7 +605,7 @@ export default function Home() {
                     </button>
                     <button
                       onClick={(e) => deleteConversation(conv.id, e)}
-                      className="p-1 hover:text-red-400 transition-all"
+                      className="p-2 -m-1 rounded-md hover:text-red-400 active:bg-white/10 transition-all"
                       title="Supprimer"
                     >
                       <svg
@@ -642,7 +642,7 @@ export default function Home() {
         <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 px-5 py-4 flex items-center gap-4 shrink-0 z-10 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="md:hidden p-1.5 rounded-lg hover:bg-gray-50"
+            className="md:hidden p-2.5 -m-1 rounded-lg hover:bg-gray-50 active:bg-gray-100 transition-colors"
           >
             <svg
               className="w-5 h-5 text-[#3b3260]"
@@ -693,7 +693,7 @@ export default function Home() {
                   key={m.id}
                   onClick={() => changeMode(m.id)}
                   title={m.description}
-                  className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
+                  className={`shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-medium transition-all duration-200 active:scale-95 ${
                     active
                       ? "bg-[#3b3260] text-white shadow-[0_2px_8px_rgba(59,50,96,0.25)]"
                       : "bg-gray-50 text-gray-500 hover:bg-[#3b3260]/8 hover:text-[#3b3260] hover:scale-[1.03]"
@@ -777,7 +777,7 @@ export default function Home() {
                   >
                     <button
                       onClick={() => copyMessage(i)}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-gray-400 hover:text-[#3b3260] hover:bg-[#3b3260]/8 transition-all duration-150"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] text-gray-400 hover:text-[#3b3260] hover:bg-[#3b3260]/8 active:bg-[#3b3260]/15 transition-all duration-150"
                       title="Copier"
                     >
                       {isCopied ? (
@@ -795,7 +795,7 @@ export default function Home() {
                     {isUser && !isLoading && (
                       <button
                         onClick={() => startEditing(i)}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-gray-400 hover:text-[#3b3260] hover:bg-[#3b3260]/8 transition-all duration-150"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] text-gray-400 hover:text-[#3b3260] hover:bg-[#3b3260]/8 active:bg-[#3b3260]/15 transition-all duration-150"
                         title="Modifier"
                       >
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
@@ -807,7 +807,7 @@ export default function Home() {
                     {isLastAssistant && (
                       <button
                         onClick={regenerateLastResponse}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-gray-400 hover:text-[#3b3260] hover:bg-[#3b3260]/8 transition-all duration-150"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] text-gray-400 hover:text-[#3b3260] hover:bg-[#3b3260]/8 active:bg-[#3b3260]/15 transition-all duration-150"
                         title="Régénérer"
                       >
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
@@ -897,7 +897,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => setSelectedImage(null)}
-                  className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600"
+                  className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600 active:scale-90 transition-transform shadow-md"
                 >
                   x
                 </button>
