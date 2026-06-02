@@ -44,7 +44,11 @@ Sources inline : à la fin de chaque paragraphe, ajoute <<source: N>> où N est 
 
 **Consignes sur l'échange** ("réponds plus bref", "à partir de maintenant...", "ne fais pas X") : acquiesce simplement, adapte-toi, ne cherche pas.
 
-**Aucun résultat sur jw.org** : ne réponds pas avec tes connaissances. Demande : "Je n'ai rien trouvé sur jw.org concernant ce sujet. Souhaitez-vous que je cherche sur d'autres sites ?"
+**Aucun résultat sur jw.org** :
+- **Si l'utilisateur t'a explicitement demandé plus tôt** d'enrichir/approfondir/aller plus loin avec tes connaissances (consigne donnée au début ou en cours de conversation) : utilise tes connaissances en signalant que jw.org n'avait pas de résultat sur ce point précis ("Sur ce point précis, jw.org ne semble pas avoir d'article direct. D'un point de vue plus général..."). Ne re-demande PAS la permission, elle a déjà été donnée.
+- **Sinon** : réponds brièvement "Je n'ai pas trouvé d'information sur jw.org concernant ce sujet. Souhaitez-vous que je cherche sur d'autres sites internet ?"
+
+**Mémoire des consignes** : prends en compte le contexte de la conversation. Si l'utilisateur t'a donné une consigne au début (ex: "réponds aux questions ET fais des recherches pour approfondir", "enrichis avec tes connaissances", "va plus loin"), cette consigne reste **valable tout au long de la conversation** — tu ne la oublies pas après quelques tours. Tu n'as pas à re-demander la permission à chaque message.
 
 **Question hors-sujet** (cuisine, code, etc.) : regarde quand même ce que les sources prioritaires en disent. Si rien, dis-le et propose une recherche alternative ou une réponse basée sur tes connaissances.
 
@@ -584,9 +588,13 @@ export async function POST(req: NextRequest) {
 
     const doSearch = shouldSearch();
 
-    // Mode-specific search strategy
+    // Default mode reformulates too for long paragraphs or messages containing
+    // verses — those are typically less suited to literal keyword search.
+    const isLongOrVerse = message.length > 120 || verseRef !== null;
     const useReformulation =
-      doSearch && ["etude", "pratique", "apologetique", "perle"].includes(mode);
+      doSearch &&
+      (["etude", "pratique", "apologetique", "perle"].includes(mode) ||
+        (mode === "default" && isLongOrVerse));
     const useCascade =
       doSearch && ["etude", "apologetique", "perle"].includes(mode);
 
@@ -613,10 +621,20 @@ export async function POST(req: NextRequest) {
               console.error("Brave Cascade Search failed:", err);
               return [] as BraveResult[];
             })
-          : searchBrave(queries[0] ?? message).catch((err) => {
-              console.error("Brave Search failed:", err);
-              return [] as BraveResult[];
-            }))
+          : (async () => {
+              // Simple search with retry on empty results
+              const primary = queries[0] ?? message;
+              const first = await searchBrave(primary).catch(() => [] as BraveResult[]);
+              if (first.length > 0) return first;
+              // Retry with alternative reformulations if available
+              for (let i = 1; i < queries.length; i++) {
+                const retry = await searchBrave(queries[i]).catch(
+                  () => [] as BraveResult[]
+                );
+                if (retry.length > 0) return retry;
+              }
+              return first;
+            })())
       : null;
 
     const verseSearchPromise = verseRef && doSearch
