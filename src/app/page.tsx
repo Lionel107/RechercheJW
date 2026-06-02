@@ -61,6 +61,7 @@ export default function Home() {
   const [editingTitle, setEditingTitle] = useState("");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("default");
+  const [showScrollDown, setShowScrollDown] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -79,6 +80,26 @@ export default function Home() {
     try {
       localStorage.setItem(MODE_KEY, newMode);
     } catch {}
+  }
+
+  // Detect scroll position to show/hide the floating scroll-to-bottom button.
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    function update() {
+      if (!container) return;
+      const threshold = 200;
+      const distanceFromBottom =
+        container.scrollHeight - container.scrollTop - container.clientHeight;
+      setShowScrollDown(distanceFromBottom > threshold && messages.length > 0);
+    }
+    update();
+    container.addEventListener("scroll", update, { passive: true });
+    return () => container.removeEventListener("scroll", update);
+  }, [messages.length]);
+
+  function scrollToBottom() {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }
 
   // Keep layout height in sync with the actual visible viewport.
@@ -482,7 +503,7 @@ export default function Home() {
       </aside>
 
       {/* Main chat area */}
-      <div className="flex flex-col flex-1 min-w-0">
+      <div className="flex flex-col flex-1 min-w-0 relative">
         {/* Header */}
         <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 px-5 py-4 flex items-center gap-4 shrink-0 z-10 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
           <button
@@ -586,13 +607,13 @@ export default function Home() {
                 <div
                   key={i}
                   ref={isLast ? lastMessageRef : undefined}
-                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                  className={`flex message-enter ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`rounded-2xl px-5 py-4 ${
+                    className={`rounded-3xl px-6 py-4 ${
                       msg.role === "user"
-                        ? "max-w-[85%] bg-[#3b3260] text-white/90"
-                        : "w-full bg-white border border-gray-100 text-gray-600 shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
+                        ? "max-w-[85%] bg-gradient-to-br from-[#3b3260] to-[#4a4170] text-white/95 shadow-[0_4px_18px_rgba(59,50,96,0.22),0_1px_2px_rgba(59,50,96,0.08)]"
+                        : "w-full bg-white text-gray-700 shadow-[0_1px_2px_rgba(59,50,96,0.04),0_8px_28px_rgba(59,50,96,0.06)]"
                     }`}
                   >
                     {msg.role === "assistant" ? (
@@ -608,8 +629,8 @@ export default function Home() {
                 );
               })}
               {isLoading && messages[messages.length - 1]?.role === "user" && (
-                <div className="flex justify-start">
-                  <div className="bg-white border border-gray-100 rounded-2xl px-5 py-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex items-center gap-3">
+                <div className="flex justify-start message-enter">
+                  <div className="bg-white rounded-3xl px-6 py-4 shadow-[0_1px_2px_rgba(59,50,96,0.04),0_8px_28px_rgba(59,50,96,0.06)] flex items-center gap-3">
                     <img src="/livre-ouvert.gif" alt="Recherche..." className="w-8 h-8" />
                     <span className="text-sm text-[#3b3260]/50">Recherche en cours...</span>
                   </div>
@@ -619,6 +640,30 @@ export default function Home() {
             </div>
           )}
         </div>
+
+        {/* Scroll to bottom floating button */}
+        {showScrollDown && (
+          <button
+            onClick={scrollToBottom}
+            aria-label="Descendre"
+            className="float-in absolute right-4 sm:right-6 z-20 w-10 h-10 rounded-full bg-[#3b3260] text-white shadow-[0_4px_14px_rgba(59,50,96,0.35)] hover:bg-[#4a4170] hover:shadow-[0_6px_20px_rgba(59,50,96,0.45)] transition-all flex items-center justify-center"
+            style={{ bottom: "calc(env(safe-area-inset-bottom) + 6.5rem)" }}
+          >
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2.5}
+                d="M19 14l-7 7m0 0l-7-7m7 7V3"
+              />
+            </svg>
+          </button>
+        )}
 
         {/* Disclaimer */}
         <div className="bg-white/80 backdrop-blur-md px-4 pb-1 pt-2 shrink-0 z-10">
