@@ -1109,7 +1109,10 @@ function resolveSourceIds(
   text: string,
   sources: Record<string, { title: string; url: string; external: boolean }>
 ): string {
-  if (!sources || Object.keys(sources).length === 0) return text;
+  if (!sources || Object.keys(sources).length === 0) {
+    // No sources available : strip every <<source: ...>> placeholder
+    return text.replace(/<<source:[^>]*?>>/g, "");
+  }
   const allSources = Object.entries(sources).map(([id, s]) => ({ id, ...s }));
 
   return text.replace(/<<source:\s*([^>]+?)>>/g, (match, content: string) => {
@@ -1396,6 +1399,11 @@ function AssistantMessage({
 
         if (title === "Sources") {
           const links = body.split("\n").filter((l) => l.trim());
+          // Hide the whole Sources section if no actual link/URL is present
+          const hasContent = links.some(
+            (l) => /\[(.+?)\]\((.+?)\)/.test(l) || /https?:\/\//.test(l)
+          );
+          if (!hasContent) return null;
           return (
             <div key={i} className="mt-3 bg-[#3b3260]/5 rounded-xl p-4 border border-[#3b3260]/10">
               <h3 className="flex items-center gap-2 text-[11px] font-semibold text-[#3b3260] uppercase tracking-[0.15em] mb-3">
