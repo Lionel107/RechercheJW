@@ -401,8 +401,10 @@ Tu **NE cherches PAS** si :
 
 **Bonnes pratiques** :
 - Une requête bien ciblée > plusieurs requêtes vagues.
-- Si la première recherche est pauvre, reformule avec d'autres mots-clés JW plutôt que d'abandonner.
-- Ne fais pas 10 fois la même recherche. Chaque appel doit apporter un angle différent.
+- Si la première recherche est pauvre, reformule avec **d'autres mots-clés JW différents** plutôt que de répéter les mêmes.
+- **NE FAIS JAMAIS la même recherche deux fois dans un tour.** Chaque appel DOIT avoir des mots-clés différents. Si le système te répond \`alreadyExecuted: true\`, c'est que tu as répété — reformule immédiatement avec d'autres termes.
+- Passe à autre chose dès que tu as suffisamment d'informations : mieux vaut 2 bonnes recherches que 6 recherches sur des variantes du même mot.
+- Si l'utilisateur demande une **mise en situation** ou une **analyse verset par verset**, ne cherche pas 5 fois — cherche 1-2 fois si utile, puis synthétise avec ta réflexion.
 
 ## L'écosystème jw.org (à connaître)
 
@@ -415,7 +417,16 @@ Tu **NE cherches PAS** si :
 
 ## Comment utiliser les résultats de recherche
 
-Tu reçois les sources avec des IDs numérotés (\`1\`, \`2\`, \`3\`, \`E1\`, \`E2\`…). Tu les cites dans ta réponse **uniquement** avec ce format :
+**Règle capitale** : les citations \`<<source: N>>\` n'ont de sens QUE si tu as réellement appelé un outil (\`search_jw_org\`, \`search_verse_commentary\`, \`search_web_external\`) pendant CE tour et obtenu des résultats.
+
+**Si tu n'as PAS appelé d'outil pendant ce tour** :
+- **N'écris JAMAIS \`<<source: 1>>\`, \`<<source: 2>>\` ou toute autre citation.** Ces IDs n'existent pas et n'apparaîtront pas comme des liens.
+- **N'ajoute PAS de section \`## Sources\`.**
+- **N'invente JAMAIS de référence à des articles jw.org.**
+- Tu peux répondre naturellement avec ta réflexion et les versets bibliques cliquables \`{{...}}\`.
+
+**Si tu as appelé un outil et obtenu des résultats** :
+Les sources te sont retournées avec des IDs numérotés (\`1\`, \`2\`, \`3\`, \`E1\`, \`E2\`…). Cite-les **uniquement** dans ce format :
 
 ✅ CORRECT
 - \`<<source: 1>>\` (cite la source ID 1)
@@ -426,6 +437,7 @@ Tu reçois les sources avec des IDs numérotés (\`1\`, \`2\`, \`3\`, \`E1\`, \`
 - \`<<source: [Titre](URL)>>\` (format obsolète)
 - \`<<source: Titre du document>>\` (titre interdit)
 - \`<<source: https://...>>\` (URL interdite)
+- \`<<source: 5>>\` alors que tu n'as que 3 résultats (ID inexistant)
 
 Le système remplace automatiquement \`<<source: N>>\` par un lien cliquable avec le bon titre.
 
@@ -436,12 +448,16 @@ Le système remplace automatiquement \`<<source: N>>\` par un lien cliquable ave
 - <<source: 3>>
 \`\`\`
 
-Si tu n'as pas cherché ou pas trouvé de sources : **n'inclus PAS de section Sources**.
+## Versets bibliques — RÈGLE ABSOLUE
 
-## Versets bibliques
+**TOUS les versets bibliques que tu cites DOIVENT être écrits dans le format \`{{Livre chapitre:verset}}\`. Sans EXCEPTION.**
 
-Écris chaque verset dans le format \`{{Livre chapitre:verset}}\`. Le système les rend cliquables.
-Exemples : \`{{Jean 3:16}}\`, \`{{Romains 8:28}}\`, \`{{1 Corinthiens 13:4-7}}\`.
+✅ CORRECT : \`{{Jean 3:16}}\`, \`{{Romains 8:28}}\`, \`{{1 Corinthiens 13:4-7}}\`, \`{{Psaume 23}}\`
+❌ INTERDIT : "Jean 3:16" (texte brut), "Isaïe 42:8" (texte brut), (Jean 3:16) (parenthèses seules)
+
+Cette règle est **technique** : sans le format \`{{...}}\` le système ne peut pas rendre le verset cliquable pour l'utilisateur. Un verset non cliquable est un verset perdu.
+
+Vérification finale : avant d'envoyer ta réponse, relis-la et remets AU FORMAT \`{{...}}\` tout verset qui aurait échappé à la règle.
 
 ## Mémoire des consignes
 
@@ -676,6 +692,8 @@ export async function POST(req: NextRequest) {
             const maxIters = modeConfig.maxSearches + 1; // +1 for the final response iteration
             let iter = 0;
             let functionCallsInThisRound = 0;
+            // Remember every query already executed so we don't repeat.
+            const executedCalls = new Set<string>();
 
             while (iter <= maxIters) {
               const streamResult = await chat.sendMessageStream(currentMessage);
@@ -687,11 +705,25 @@ export async function POST(req: NextRequest) {
               }
 
               const response = await streamResult.response;
-              const calls = response.functionCalls?.() ?? [];
+              const calls = (response.functionCalls?.() ?? []) as FunctionCall[];
 
               if (calls.length === 0) {
                 // Model finished normally — no more tool calls
                 break;
+              }
+
+              // Deduplicate calls within the same round + against previous rounds
+              const uniqueCalls: FunctionCall[] = [];
+              const duplicatesInResponse: FunctionCall[] = [];
+              const seenThisRound = new Set<string>();
+              for (const c of calls) {
+                const key = `${c.name}|${JSON.stringify(c.args ?? {})}`;
+                if (executedCalls.has(key) || seenThisRound.has(key)) {
+                  duplicatesInResponse.push(c);
+                  continue;
+                }
+                seenThisRound.add(key);
+                uniqueCalls.push(c);
               }
 
               // We hit the max — force the model to finalize with what it has
@@ -700,7 +732,6 @@ export async function POST(req: NextRequest) {
                   toolLimit: true,
                   message: "Limite de recherches atteinte pour ce mode.",
                 });
-                // Send a message telling the model to finalize
                 currentMessage = [
                   {
                     text:
@@ -711,9 +742,11 @@ export async function POST(req: NextRequest) {
                 continue;
               }
 
-              // Execute the function calls in parallel
-              const functionResponses: Part[] = await Promise.all(
-                (calls as FunctionCall[]).map(async (call) => {
+              // Execute only the unique calls
+              const executedResponses: Part[] = await Promise.all(
+                uniqueCalls.map(async (call) => {
+                  const key = `${call.name}|${JSON.stringify(call.args ?? {})}`;
+                  executedCalls.add(key);
                   send({
                     toolCall: {
                       name: call.name,
@@ -741,12 +774,28 @@ export async function POST(req: NextRequest) {
                 })
               );
 
+              // For duplicate calls, return a synthetic response telling the
+              // model that the query was already run so it stops repeating.
+              const duplicateResponses: Part[] = duplicatesInResponse.map(
+                (call) =>
+                  ({
+                    functionResponse: {
+                      name: call.name,
+                      response: {
+                        alreadyExecuted: true,
+                        message:
+                          "Cette recherche a déjà été effectuée. Consulte les résultats précédents. Si tu as besoin de plus d'informations, formule une requête DIFFÉRENTE avec d'autres mots-clés.",
+                      },
+                    },
+                  }) as Part
+              );
+
               // Push updated sources snapshot to the client
               if (allSources.length > 0) {
                 send({ sources: allSources });
               }
 
-              currentMessage = functionResponses;
+              currentMessage = [...executedResponses, ...duplicateResponses];
               iter++;
             }
 
