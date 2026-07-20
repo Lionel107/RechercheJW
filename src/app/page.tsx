@@ -2,9 +2,16 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 
+interface SearchLog {
+  tool: string; // "search_jw_org" | "search_verse_commentary" | "search_web_external"
+  query: string;
+  count?: number;
+}
+
 interface Message {
   role: "user" | "assistant";
   content: string;
+  searches?: SearchLog[];
 }
 
 interface Conversation {
@@ -324,6 +331,8 @@ export default function Home() {
       string,
       { title: string; url: string; external: boolean }
     > = {};
+    const searches: SearchLog[] = [];
+    let currentToolCall: SearchLog | null = null;
 
     try {
       const response = await fetch("/api/chat", {
@@ -344,7 +353,16 @@ export default function Home() {
       if (!reader) throw new Error("Pas de stream");
 
       const decoder = new TextDecoder();
-      setMessages([...newMessages, { role: "assistant", content: "" }]);
+      let assistantAdded = false;
+      const ensureAssistantAdded = () => {
+        if (!assistantAdded) {
+          setMessages([
+            ...newMessages,
+            { role: "assistant", content: "", searches: [] },
+          ]);
+          assistantAdded = true;
+        }
+      };
 
       while (true) {
         const { done, value } = await reader.read();
@@ -368,13 +386,45 @@ export default function Home() {
                     external: !!s.external,
                   };
                 }
-              }
-              if (parsed.text) {
-                assistantContent += parsed.text;
+                ensureAssistantAdded();
                 const resolved = resolveSourceIds(assistantContent, sourcesMap);
                 setMessages([
                   ...newMessages,
-                  { role: "assistant", content: resolved },
+                  { role: "assistant", content: resolved, searches: [...searches] },
+                ]);
+              }
+              if (parsed.toolCall) {
+                const query =
+                  (parsed.toolCall.args?.query as string) ||
+                  (parsed.toolCall.args?.verse as string) ||
+                  "";
+                currentToolCall = {
+                  tool: parsed.toolCall.name,
+                  query,
+                };
+                searches.push(currentToolCall);
+                ensureAssistantAdded();
+                setMessages([
+                  ...newMessages,
+                  { role: "assistant", content: assistantContent, searches: [...searches] },
+                ]);
+              }
+              if (parsed.toolResult && currentToolCall) {
+                currentToolCall.count = parsed.toolResult.count;
+                ensureAssistantAdded();
+                setMessages([
+                  ...newMessages,
+                  { role: "assistant", content: assistantContent, searches: [...searches] },
+                ]);
+                currentToolCall = null;
+              }
+              if (parsed.text) {
+                assistantContent += parsed.text;
+                ensureAssistantAdded();
+                const resolved = resolveSourceIds(assistantContent, sourcesMap);
+                setMessages([
+                  ...newMessages,
+                  { role: "assistant", content: resolved, searches: [...searches] },
                 ]);
               }
             } catch {
@@ -385,9 +435,13 @@ export default function Home() {
       }
       assistantContent = resolveSourceIds(assistantContent, sourcesMap);
 
-      const finalMessages = [
+      const finalMessages: Message[] = [
         ...newMessages,
-        { role: "assistant" as const, content: assistantContent },
+        {
+          role: "assistant" as const,
+          content: assistantContent,
+          searches: searches.length > 0 ? searches : undefined,
+        },
       ];
       setMessages(finalMessages);
       persistMessages(currentId, finalMessages, currentConvs);
@@ -755,22 +809,29 @@ export default function Home() {
                   ref={isLast ? lastMessageRef : undefined}
                   className={`message-enter flex flex-col ${isUser ? "items-end" : "items-stretch"}`}
                 >
-                  <div
-                    className={`rounded-3xl px-6 py-4 ${
-                      isUser
-                        ? "max-w-[85%] bg-gradient-to-br from-[#3b3260] to-[#4a4170] text-white/95 shadow-[0_4px_18px_rgba(59,50,96,0.22),0_1px_2px_rgba(59,50,96,0.08)]"
-                        : "w-full bg-white text-gray-700 shadow-[0_1px_2px_rgba(59,50,96,0.04),0_8px_28px_rgba(59,50,96,0.06)]"
-                    }`}
-                  >
-                    {isUser ? (
-                      <p className="whitespace-pre-wrap">{msg.content}</p>
-                    ) : (
-                      <AssistantMessage
-                        content={msg.content}
-                        onSuggestedQuestion={handleSuggestedQuestion}
-                      />
-                    )}
-                  </div>
+                  {/* Journal des recherches effectuées */}
+                  {!isUser && msg.searches && msg.searches.length > 0 && (
+                    <SearchesJournal searches={msg.searches} />
+                  )}
+                  {/* Bulle : cachée si assistant vide (en pleine recherche) */}
+                  {(isUser || msg.content.trim().length > 0) && (
+                    <div
+                      className={`rounded-3xl px-6 py-4 ${
+                        isUser
+                          ? "max-w-[85%] bg-gradient-to-br from-[#3b3260] to-[#4a4170] text-white/95 shadow-[0_4px_18px_rgba(59,50,96,0.22),0_1px_2px_rgba(59,50,96,0.08)]"
+                          : "w-full bg-white text-gray-700 shadow-[0_1px_2px_rgba(59,50,96,0.04),0_8px_28px_rgba(59,50,96,0.06)]"
+                      }`}
+                    >
+                      {isUser ? (
+                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                      ) : (
+                        <AssistantMessage
+                          content={msg.content}
+                          onSuggestedQuestion={handleSuggestedQuestion}
+                        />
+                      )}
+                    </div>
+                  )}
                   {/* Message actions toolbar */}
                   <div
                     className={`flex items-center gap-1 mt-1.5 ${isUser ? "justify-end pr-1" : "justify-start pl-1"}`}
@@ -1347,6 +1408,54 @@ function renderMarkdownBody(text: string) {
   flushAll();
 
   return <div className="space-y-2">{blocks}</div>;
+}
+
+function toolLabel(tool: string): string {
+  if (tool === "search_verse_commentary") return "Commentaires du verset";
+  if (tool === "search_web_external") return "Recherche externe";
+  return "Recherche sur jw.org";
+}
+
+function SearchesJournal({ searches }: { searches: SearchLog[] }) {
+  return (
+    <div className="mb-3 space-y-1">
+      {searches.map((s, i) => {
+        const pending = s.count === undefined;
+        return (
+          <div
+            key={i}
+            className="flex items-center gap-2 text-[11px] text-[#3b3260]/60"
+          >
+            <svg
+              className={`w-3.5 h-3.5 shrink-0 ${pending ? "animate-pulse" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              viewBox="0 0 24 24"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="M21 21l-4.35-4.35" strokeLinecap="round" />
+            </svg>
+            <span className="truncate">
+              <span className="text-[#3b3260]/80 font-medium">{toolLabel(s.tool)}</span>
+              {s.query && (
+                <>
+                  <span className="mx-1 text-[#3b3260]/30">·</span>
+                  <span className="italic">&laquo;&nbsp;{s.query}&nbsp;&raquo;</span>
+                </>
+              )}
+              {!pending && (
+                <>
+                  <span className="mx-1 text-[#3b3260]/30">→</span>
+                  <span>{s.count} r&eacute;sultat{s.count === 1 ? "" : "s"}</span>
+                </>
+              )}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function AssistantMessage({
