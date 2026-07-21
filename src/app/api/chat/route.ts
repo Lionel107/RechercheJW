@@ -36,11 +36,14 @@ interface SourceEntry {
 // MODEL CASCADE (fallback if a model is rate-limited or busy)
 // ────────────────────────────────────────────────────────────
 
+// Cascade de modèles : on essaie dans l'ordre en cas de 429/503.
+// Ne mettre ici que des modèles qui existent RÉELLEMENT et supportent
+// function calling. Les modèles preview qui n'acceptent pas les tools
+// retournent 400 et sont juste du bruit dans les logs.
 const MODEL_CASCADE = [
   "gemini-2.5-flash",
-  "gemini-3-flash-preview",
-  "gemini-3.1-flash-lite-preview",
   "gemini-2.5-flash-lite",
+  "gemini-2.0-flash",
   "gemini-2.0-flash-lite",
 ];
 
@@ -694,6 +697,9 @@ export async function POST(req: NextRequest) {
             let functionCallsInThisRound = 0;
             // Remember every query already executed so we don't repeat.
             const executedCalls = new Set<string>();
+            // Track whether we ever received a non-empty text chunk — if not
+            // at the end, we consider this a failed run and try the next model.
+            let totalTextChars = 0;
 
             while (iter <= maxIters) {
               const streamResult = await chat.sendMessageStream(currentMessage);
@@ -701,7 +707,10 @@ export async function POST(req: NextRequest) {
               // Consume the stream — send text chunks to the client
               for await (const chunk of streamResult.stream) {
                 const text = chunk.text?.();
-                if (text) send({ text });
+                if (text) {
+                  totalTextChars += text.length;
+                  send({ text });
+                }
               }
 
               const response = await streamResult.response;
@@ -797,6 +806,16 @@ export async function POST(req: NextRequest) {
 
               currentMessage = [...executedResponses, ...duplicateResponses];
               iter++;
+            }
+
+            // If the model finished without ever producing text, treat it as
+            // a failed run and try the next model (unless we hit the iteration
+            // limit, in which case we accept whatever we have).
+            if (totalTextChars === 0) {
+              console.log(
+                `Model ${modelName} finished with empty response, trying next…`
+              );
+              continue;
             }
 
             modelSucceeded = true;
