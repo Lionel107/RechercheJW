@@ -12,6 +12,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   searches?: SearchLog[];
+  fallbackModel?: string;
 }
 
 interface Conversation {
@@ -333,6 +334,7 @@ export default function Home() {
     > = {};
     const searches: SearchLog[] = [];
     let currentToolCall: SearchLog | null = null;
+    let fallbackModel: string | undefined;
 
     try {
       const response = await fetch("/api/chat", {
@@ -406,7 +408,7 @@ export default function Home() {
                 ensureAssistantAdded();
                 setMessages([
                   ...newMessages,
-                  { role: "assistant", content: assistantContent, searches: [...searches] },
+                  { role: "assistant", content: assistantContent, searches: [...searches], fallbackModel },
                 ]);
               }
               if (parsed.toolResult && currentToolCall) {
@@ -414,9 +416,17 @@ export default function Home() {
                 ensureAssistantAdded();
                 setMessages([
                   ...newMessages,
-                  { role: "assistant", content: assistantContent, searches: [...searches] },
+                  { role: "assistant", content: assistantContent, searches: [...searches], fallbackModel },
                 ]);
                 currentToolCall = null;
+              }
+              if (parsed.fallbackMode) {
+                fallbackModel = String(parsed.model ?? "modèle de repli");
+                ensureAssistantAdded();
+                setMessages([
+                  ...newMessages,
+                  { role: "assistant", content: assistantContent, searches: [...searches], fallbackModel },
+                ]);
               }
               if (parsed.text) {
                 assistantContent += parsed.text;
@@ -424,7 +434,7 @@ export default function Home() {
                 const resolved = resolveSourceIds(assistantContent, sourcesMap);
                 setMessages([
                   ...newMessages,
-                  { role: "assistant", content: resolved, searches: [...searches] },
+                  { role: "assistant", content: resolved, searches: [...searches], fallbackModel },
                 ]);
               }
             } catch {
@@ -441,6 +451,7 @@ export default function Home() {
           role: "assistant" as const,
           content: assistantContent,
           searches: searches.length > 0 ? searches : undefined,
+          fallbackModel,
         },
       ];
       setMessages(finalMessages);
@@ -812,6 +823,29 @@ export default function Home() {
                   {/* Journal des recherches effectuées */}
                   {!isUser && msg.searches && msg.searches.length > 0 && (
                     <SearchesJournal searches={msg.searches} />
+                  )}
+                  {/* Avertissement modèle de secours */}
+                  {!isUser && msg.fallbackModel && (
+                    <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[11px]">
+                      <svg
+                        className="w-3.5 h-3.5 shrink-0"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M12 9v2m0 4h.01M4.93 19h14.14a2 2 0 0 0 1.73-3L13.73 4a2 2 0 0 0-3.46 0L3.2 16a2 2 0 0 0 1.73 3z"
+                        />
+                      </svg>
+                      <span>
+                        Modèle de secours actif (sources jw.org temporairement
+                        indisponibles). Réponse basée sur les connaissances
+                        générales du modèle.
+                      </span>
+                    </div>
                   )}
                   {/* Bulle : cachée si assistant vide (en pleine recherche) */}
                   {(isUser || msg.content.trim().length > 0) && (

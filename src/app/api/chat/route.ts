@@ -36,15 +36,26 @@ interface SourceEntry {
 // MODEL CASCADE (fallback if a model is rate-limited or busy)
 // ────────────────────────────────────────────────────────────
 
-// Cascade de modèles : on essaie dans l'ordre en cas de 429/503.
-// Ne mettre ici que des modèles qui existent RÉELLEMENT et supportent
-// function calling. Les modèles preview qui n'acceptent pas les tools
-// retournent 400 et sont juste du bruit dans les logs.
-const MODEL_CASCADE = [
-  "gemini-2.5-flash",
-  "gemini-2.5-flash-lite",
-  "gemini-2.0-flash",
-  "gemini-2.0-flash-lite",
+// Cascade de modèles à deux étages :
+// - Tier 1 (Gemini) : accès aux outils de recherche (search_jw_org, etc.)
+// - Tier 2 (Gemma) : PAS d'outils, mais bon secours si tout Gemini est épuisé.
+//   La réponse sera basée uniquement sur les connaissances du modèle,
+//   sans sources jw.org. On préfixe alors la réponse d'un avertissement.
+interface ModelConfig {
+  name: string;
+  supportsTools: boolean;
+}
+
+const MODEL_CASCADE: ModelConfig[] = [
+  // Tier 1 — Gemini (avec outils)
+  { name: "gemini-2.5-flash", supportsTools: true },
+  { name: "gemini-2.5-flash-lite", supportsTools: true },
+  { name: "gemini-2.0-flash", supportsTools: true },
+  { name: "gemini-2.0-flash-lite", supportsTools: true },
+  // Tier 2 — Gemma (sans outils, dernier recours)
+  { name: "gemma-3-27b-it", supportsTools: false },
+  { name: "gemma-3-12b-it", supportsTools: false },
+  { name: "gemma-2-9b-it", supportsTools: false },
 ];
 
 // ────────────────────────────────────────────────────────────
@@ -680,25 +691,33 @@ export async function POST(req: NextRequest) {
         const allSources: SourceEntry[] = [];
         let modelSucceeded = false;
 
-        for (const modelName of MODEL_CASCADE) {
+        for (const modelConfig of MODEL_CASCADE) {
+          const modelName = modelConfig.name;
           try {
             const model = genAI.getGenerativeModel({
               model: modelName,
-              systemInstruction: systemPrompt,
-              tools,
+              systemInstruction: modelConfig.supportsTools
+                ? systemPrompt
+                : systemPrompt +
+                  "\n\n## ⚠️ Modèle de secours actif\nTu n'as PAS accès aux outils de recherche pour ce tour (modèle de repli, sources indisponibles temporairement). Réponds naturellement avec tes connaissances générales, sans citer de source jw.org spécifique (n'écris JAMAIS <<source: N>>). Tu peux toujours utiliser {{Livre chap:verset}} pour les versets bibliques.",
+              tools: modelConfig.supportsTools ? tools : undefined,
             });
+
+            // Signal to the client if we're on a fallback (no-tools) model
+            if (!modelConfig.supportsTools) {
+              send({ fallbackMode: true, model: modelName });
+            }
 
             const chat = model.startChat({ history: chatHistory });
 
-            // Tool-use loop
+            // Tool-use loop (Gemini) OR simple stream (Gemma)
             let currentMessage: Part[] = userParts;
-            const maxIters = modeConfig.maxSearches + 1; // +1 for the final response iteration
+            const maxIters = modelConfig.supportsTools
+              ? modeConfig.maxSearches + 1
+              : 1; // Gemma : single-shot streaming
             let iter = 0;
             let functionCallsInThisRound = 0;
-            // Remember every query already executed so we don't repeat.
             const executedCalls = new Set<string>();
-            // Track whether we ever received a non-empty text chunk — if not
-            // at the end, we consider this a failed run and try the next model.
             let totalTextChars = 0;
 
             while (iter <= maxIters) {
@@ -712,6 +731,9 @@ export async function POST(req: NextRequest) {
                   send({ text });
                 }
               }
+
+              // Gemma model : no tool loop, we're done after one stream
+              if (!modelConfig.supportsTools) break;
 
               const response = await streamResult.response;
               const calls = (response.functionCalls?.() ?? []) as FunctionCall[];
